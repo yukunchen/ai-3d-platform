@@ -98,7 +98,7 @@ export async function updateJobStatusInHistory(
 const historyQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  type: z.enum([JobType.Text, JobType.Image]).optional(),
+  type: z.enum([JobType.Text, JobType.Image, JobType.MultiView]).optional(),
   status: z.enum([JobStatus.Queued, JobStatus.Running, JobStatus.Succeeded, JobStatus.Failed]).optional(),
 });
 

@@ -35,6 +35,10 @@ pnpm-debug.log*
 
 # testing
 coverage
+playwright-report
+test-results
+.playwright
+apps/api/storage/*.glb
 
 # misc
 *.pem

@@ -14,6 +14,7 @@ export enum JobStatus {
 export enum JobType {
   Text = 'text',
   Image = 'image',
+  MultiView = 'multiview',
 }
 
 /**
@@ -39,4 +40,12 @@ export enum AuthProvider {
   Email = 'email',
   Google = 'google',
   GitHub = 'github',
+}
+
+/**
+ * Provider enum
+ */
+export enum Provider {
+  Hunyuan = 'hunyuan',
+  Meshy = 'meshy',
 }

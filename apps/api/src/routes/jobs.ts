@@ -2,17 +2,94 @@ import { Router, Request, Response } from 'express';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse } from '@ai-3d-platform/shared';
+import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider } from '@ai-3d-platform/shared';
 import { saveJobToHistory } from './history';
 
-const createJobSchema = z.object({
-  type: z.enum([JobType.Text, JobType.Image]),
-  prompt: z.string().min(1).max(2000),
-  imageUrl: z.string().url().optional(),
-});
+type QueueState = 'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | string;
 
-export function createJobRouter(queue: Queue<JobData>): Router {
+export interface QueueJobLike {
+  getState(): Promise<QueueState>;
+  returnvalue?: { assetId?: string } | null;
+  failedReason?: string;
+}
+
+export interface JobQueueLike {
+  add(
+    name: string,
+    data: JobData,
+    opts: { jobId: string; attempts: number; backoff: { type: string; delay: number } }
+  ): Promise<unknown>;
+  getJob(jobId: string): Promise<QueueJobLike | null | undefined>;
+}
+
+interface JobRouterDeps {
+  saveToHistory?: typeof saveJobToHistory;
+}
+
+const createJobSchema = z
+  .object({
+    type: z.enum([JobType.Text, JobType.Image, JobType.MultiView]),
+    prompt: z.string().min(1).max(2000),
+    imageUrl: z.string().url().optional(),
+    viewImages: z
+      .object({
+        front: z.string().url(),
+        left: z.string().url(),
+        right: z.string().url(),
+      })
+      .optional(),
+    provider: z.enum([Provider.Hunyuan, Provider.Meshy]).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === JobType.Image && !data.imageUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'imageUrl is required for image-to-3D jobs',
+        path: ['imageUrl'],
+      });
+    }
+    if (data.type === JobType.Text && data.imageUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'imageUrl must be empty for text-to-3D jobs',
+        path: ['imageUrl'],
+      });
+    }
+    if (data.type === JobType.Text && data.viewImages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'viewImages must be empty for text-to-3D jobs',
+        path: ['viewImages'],
+      });
+    }
+    if (data.type === JobType.Image && data.viewImages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'viewImages must be empty for image-to-3D jobs',
+        path: ['viewImages'],
+      });
+    }
+    if (data.type === JobType.MultiView) {
+      if (data.imageUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'imageUrl must be empty for multiview-to-3D jobs',
+          path: ['imageUrl'],
+        });
+      }
+      if (!data.viewImages) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'viewImages are required for multiview-to-3D jobs',
+          path: ['viewImages'],
+        });
+      }
+    }
+  });
+
+export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobRouterDeps = {}): Router {
   const router = Router();
+  const saveToHistory = deps.saveToHistory || saveJobToHistory;
 
   // POST /v1/jobs - Create a new job
   router.post('/', async (req: Request, res: Response) => {
@@ -25,6 +102,8 @@ export function createJobRouter(queue: Queue<JobData>): Router {
         type: body.type,
         prompt: body.prompt,
         imageUrl: body.imageUrl,
+        viewImages: body.viewImages,
+        provider: body.provider,
         createdAt: Date.now(),
       };
 
@@ -38,7 +117,7 @@ export function createJobRouter(queue: Queue<JobData>): Router {
       });
 
       // Save job to history
-      await saveJobToHistory(jobId, body.type, body.prompt, JobStatus.Queued, null);
+      await saveToHistory(jobId, body.type, body.prompt, JobStatus.Queued, null);
 
       const response: CreateJobResponse = {
         jobId,
@@ -82,13 +161,14 @@ export function createJobRouter(queue: Queue<JobData>): Router {
         case 'active':
           status = JobStatus.Running;
           break;
-        case 'completed':
+        case 'completed': {
           status = JobStatus.Succeeded;
           const result = job.returnvalue;
           if (result) {
             assetId = result.assetId;
           }
           break;
+        }
         case 'failed':
           status = JobStatus.Failed;
           error = job.failedReason || 'Job failed';

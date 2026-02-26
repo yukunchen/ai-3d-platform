@@ -9,14 +9,30 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "test": "pnpm test:api && pnpm test:worker",
+    "test:api": "pnpm -C apps/api test",
+    "test:worker": "pnpm -C apps/worker test",
+    "test:web:smoke": "pnpm -C apps/web test:smoke",
+    "test:all": "pnpm test && pnpm test:web:smoke",
+    "test:ci": "pnpm test:all",
+    "test:tdd:step1": "pnpm -C apps/api test -- -t \"health\"",
+    "test:tdd:step2": "pnpm -C apps/api test -- -t \"POST /v1/jobs\"",
+    "test:tdd:step3": "pnpm -C apps/api test -- -t \"GET /v1/jobs/:jobId\"",
+    "test:tdd:step4": "pnpm -C apps/api test -- -t \"GET /v1/assets\"",
+    "test:tdd:step5": "pnpm -C apps/worker test",
+    "test:tdd:step6": "pnpm test:web:smoke",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/supertest": "^6.0.3",
     "pnpm": "^8.15.0",
     "prettier": "^3.2.0",
+    "supertest": "^7.1.4",
     "turbo": "^2.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.9"
   },
   "packageManager": "pnpm@8.15.0",
   "engines": {

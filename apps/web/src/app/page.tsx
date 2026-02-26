@@ -1,15 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { JobType, JobStatus, CreateJobRequest, JobStatusResponse } from '@ai-3d-platform/shared';
+import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider } from '@ai-3d-platform/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModelViewer from '../components/ModelViewer';
 import styles from './page.module.css';
 
 export default function Home() {
   const [jobType, setJobType] = useState<JobType>(JobType.Text);
+  const [provider, setProvider] = useState<Provider | 'auto'>('auto');
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [frontImageUrl, setFrontImageUrl] = useState('');
+  const [leftImageUrl, setLeftImageUrl] = useState('');
+  const [rightImageUrl, setRightImageUrl] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<JobStatus | null>(null);
   const [assetUrl, setAssetUrl] = useState<string | null>(null);
@@ -18,7 +22,28 @@ export default function Home() {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+  const validateInput = (): string | null => {
+    if (!prompt.trim()) {
+      return 'Prompt is required';
+    }
+    if (jobType === JobType.Image && !imageUrl.trim()) {
+      return 'Image URL is required for image-to-3D';
+    }
+    if (jobType === JobType.MultiView) {
+      if (!frontImageUrl.trim() || !leftImageUrl.trim() || !rightImageUrl.trim()) {
+        return 'Front/Left/Right image URLs are required for three-view-to-3D';
+      }
+    }
+    return null;
+  };
+
   const createJob = async () => {
+    const validationError = validateInput();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setAssetUrl(null);
@@ -31,6 +56,16 @@ export default function Home() {
 
       if (jobType === JobType.Image && imageUrl) {
         body.imageUrl = imageUrl;
+      }
+      if (jobType === JobType.MultiView) {
+        body.viewImages = {
+          front: frontImageUrl,
+          left: leftImageUrl,
+          right: rightImageUrl,
+        };
+      }
+      if (provider !== 'auto') {
+        body.provider = provider;
       }
 
       const res = await fetch(`${API_URL}/v1/jobs`, {
@@ -111,6 +146,19 @@ export default function Home() {
           >
             <option value={JobType.Text}>Text to 3D</option>
             <option value={JobType.Image}>Image to 3D</option>
+            <option value={JobType.MultiView}>Three-view to 3D</option>
+          </select>
+        </div>
+
+        <div className={styles.inputGroup}>
+          <label>Provider:</label>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as Provider | 'auto')}
+          >
+            <option value="auto">Auto</option>
+            <option value={Provider.Hunyuan}>Tencent Hunyuan</option>
+            <option value={Provider.Meshy}>Meshy</option>
           </select>
         </div>
 
@@ -136,12 +184,44 @@ export default function Home() {
           </div>
         )}
 
+        {jobType === JobType.MultiView && (
+          <>
+            <div className={styles.inputGroup}>
+              <label>Front Image URL:</label>
+              <input
+                type="url"
+                value={frontImageUrl}
+                onChange={(e) => setFrontImageUrl(e.target.value)}
+                placeholder="https://example.com/front.png"
+              />
+            </div>
+            <div className={styles.inputGroup}>
+              <label>Left Image URL:</label>
+              <input
+                type="url"
+                value={leftImageUrl}
+                onChange={(e) => setLeftImageUrl(e.target.value)}
+                placeholder="https://example.com/left.png"
+              />
+            </div>
+            <div className={styles.inputGroup}>
+              <label>Right Image URL:</label>
+              <input
+                type="url"
+                value={rightImageUrl}
+                onChange={(e) => setRightImageUrl(e.target.value)}
+                placeholder="https://example.com/right.png"
+              />
+            </div>
+          </>
+        )}
+
         <button
           onClick={() => {
             console.log('Button clicked!', { prompt, loading, jobType });
             createJob();
           }}
-          disabled={loading}
+          disabled={loading || !!validateInput()}
           className={styles.button}
         >
           {loading ? 'Processing...' : 'Generate 3D Model'}

@@ -25,6 +25,7 @@ Success = A complete runnable pipeline with quality gates:
 - 05_security_compliance.md
 - 07_test_plan.md
 - 08_repo_layout.md
+- 09_local_testing_ci.md
 
 ## 4. Hard rules
 ### 4.1 API contract is source of truth

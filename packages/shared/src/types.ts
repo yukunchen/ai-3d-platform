@@ -1,4 +1,10 @@
-import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider } from './enums';
+import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider } from './enums';
+
+export interface MultiViewImages {
+  front: string;
+  left: string;
+  right: string;
+}
 
 /**
  * Create job request body
@@ -7,6 +13,8 @@ export interface CreateJobRequest {
   type: JobType;
   prompt: string;
   imageUrl?: string;
+  viewImages?: MultiViewImages;
+  provider?: Provider;
 }
 
 /**
@@ -43,6 +51,8 @@ export interface JobData {
   type: JobType;
   prompt: string;
   imageUrl?: string;
+  viewImages?: MultiViewImages;
+  provider?: Provider;
   createdAt: number;
 }
 

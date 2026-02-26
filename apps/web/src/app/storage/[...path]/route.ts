@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { path: string[] } }
 ) {
   const path = params.path.join('/');
@@ -19,7 +19,7 @@ export async function GET(
         'Access-Control-Allow-Origin': '*',
       },
     });
-  } catch (error) {
+  } catch {
     return new NextResponse('Error', { status: 500 });
   }
 }

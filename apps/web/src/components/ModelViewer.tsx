@@ -2,7 +2,7 @@
 
 import { useState, Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Stage, Html } from '@react-three/drei';
+import { OrbitControls, useGLTF, Stage } from '@react-three/drei';
 
 interface ModelViewerProps {
   /** URL of the GLB/GLTF model */
@@ -17,40 +17,6 @@ interface ModelViewerProps {
   enableZoom?: boolean;
   /** Enable or disable pan (default: true) */
   enablePan?: boolean;
-}
-
-function Loader() {
-  const { progress } = useProgress();
-  return (
-    <Html center>
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#333',
-        fontFamily: 'system-ui, sans-serif',
-      }}>
-        <div style={{
-          width: '40px',
-          height: '40px',
-          border: '3px solid #f3f3f3',
-          borderTop: '3px solid #3b82f6',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-        }} />
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-        <p style={{ marginTop: '12px', fontSize: '14px' }}>
-          Loading... {progress.toFixed(0)}%
-        </p>
-      </div>
-    </Html>
-  );
 }
 
 function LoadingOverlay({ isLoading }: { isLoading: boolean }) {
@@ -95,19 +61,10 @@ function LoadingOverlay({ isLoading }: { isLoading: boolean }) {
   );
 }
 
-function Model({ url, onError }: { url: string; onError: (error: Error) => void }) {
+function Model({ url, onError: _onError }: { url: string; onError: (error: Error) => void }) {
   console.log('[ModelViewer] Loading URL:', url);
 
-  const { scene } = useGLTF(
-    url,
-    (progress) => {
-      console.log('[ModelViewer] Progress:', progress.loaded, '/', progress.total);
-    },
-    (error) => {
-      console.error('[ModelViewer] useGLTF error:', error);
-      onError(error instanceof Error ? error : new Error(String(error)));
-    }
-  );
+  const { scene } = useGLTF(url);
 
   useEffect(() => {
     if (scene) {

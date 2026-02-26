@@ -46,6 +46,34 @@ interface MeshyTaskResponse {
   };
 }
 
+export function buildTextTaskPayload(prompt: string): Record<string, unknown> {
+  return {
+    mode: 'preview',
+    prompt,
+    should_remesh: true,
+  };
+}
+
+export function buildImageTaskPayload(imageUrl: string): Record<string, unknown> {
+  return {
+    image_url: imageUrl,
+    should_remesh: true,
+    should_texture: true,
+    enable_pbr: true,
+    save_pre_remeshed_model: false,
+  };
+}
+
+export function buildMultiViewTaskPayload(viewImages: { front: string; left: string; right: string }): Record<string, unknown> {
+  return {
+    image_urls: [viewImages.front, viewImages.left, viewImages.right],
+    should_remesh: true,
+    should_texture: true,
+    enable_pbr: true,
+    save_pre_remeshed_model: false,
+  };
+}
+
 /**
  * Get Meshy configuration from environment variables
  */
@@ -169,7 +197,7 @@ async function downloadFile(urlString: string): Promise<Buffer> {
  */
 async function pollTaskStatus(
   taskId: string,
-  apiVersion: 'v1' | 'v2',
+  taskPath: string,
   apiKey: string,
   jobId?: string
 ): Promise<MeshyTaskResponse> {
@@ -178,7 +206,7 @@ async function pollTaskStatus(
   while (attempts < MAX_POLL_ATTEMPTS) {
     const response = await makeRequest<MeshyTaskResponse>(
       'GET',
-      `/openapi/${apiVersion}/${apiVersion === 'v1' ? 'image-to-3d' : 'text-to-3d'}/${taskId}`,
+      `${taskPath}/${taskId}`,
       undefined,
       apiKey
     );
@@ -258,11 +286,7 @@ export async function generateFromText(
   const createResponse = await makeRequest<{ result: string }>(
     'POST',
     '/openapi/v2/text-to-3d',
-    {
-      mode: 'preview',
-      prompt: prompt,
-      should_remesh: true,
-    },
+    buildTextTaskPayload(prompt),
     apiKey
   );
 
@@ -270,7 +294,7 @@ export async function generateFromText(
   console.log(`[Meshy] Task created: ${taskId}`);
 
   // Poll for completion
-  const result = await pollTaskStatus(taskId, 'v2', apiKey, job.id);
+  const result = await pollTaskStatus(taskId, '/openapi/v2/text-to-3d', apiKey, job.id);
 
   if (!result.model_urls?.glb) {
     throw new Error('No GLB URL in Meshy response');
@@ -316,13 +340,7 @@ export async function generateFromImage(
   const createResponse = await makeRequest<{ result: string }>(
     'POST',
     '/openapi/v1/image-to-3d',
-    {
-      image_url: imageUrl,
-      should_remesh: true,
-      should_texture: true,
-      enable_pbr: true,
-      save_pre_remeshed_model: false,
-    },
+    buildImageTaskPayload(imageUrl),
     apiKey
   );
 
@@ -330,7 +348,7 @@ export async function generateFromImage(
   console.log(`[Meshy] Task created: ${taskId}`);
 
   // Poll for completion
-  const result = await pollTaskStatus(taskId, 'v1', apiKey, job.id);
+  const result = await pollTaskStatus(taskId, '/openapi/v1/image-to-3d', apiKey, job.id);
 
   if (!result.model_urls?.glb) {
     throw new Error('No GLB URL in Meshy response');
@@ -344,6 +362,54 @@ export async function generateFromImage(
   const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
+
+  return uploadResult;
+}
+
+/**
+ * Generate 3D model from three-view images using Meshy API
+ */
+export async function generateFromMultiView(
+  job: Job<JobData, TaskResult>,
+  s3Client: S3Client | null,
+  bucket: string | undefined
+): Promise<TaskResult> {
+  const config = getMeshyConfig();
+
+  if (!config) {
+    console.log('[Meshy] API key not configured, using mock provider');
+    return generatePlaceholderGLB(job.id!, s3Client, bucket);
+  }
+
+  const { apiKey } = config;
+  const viewImages = job.data.viewImages;
+
+  if (!viewImages?.front || !viewImages?.left || !viewImages?.right) {
+    throw new Error('front/left/right images are required for multiview-to-3D generation');
+  }
+
+  console.log('[Meshy] Generating 3D from multiview images');
+
+  const createResponse = await makeRequest<{ result: string }>(
+    'POST',
+    '/openapi/v1/multi-image-to-3d',
+    buildMultiViewTaskPayload(viewImages),
+    apiKey
+  );
+
+  const taskId = createResponse.result;
+  console.log(`[Meshy] Multi-view task created: ${taskId}`);
+
+  const result = await pollTaskStatus(taskId, '/openapi/v1/multi-image-to-3d', apiKey, job.id);
+
+  if (!result.model_urls?.glb) {
+    throw new Error('No GLB URL in Meshy multiview response');
+  }
+
+  console.log(`[Meshy] Downloading GLB from: ${result.model_urls.glb}`);
+  const glbBuffer = await downloadFile(result.model_urls.glb);
+  const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  console.log(`[Meshy] Generated multiview asset: ${uploadResult.assetId}`);
 
   return uploadResult;
 }

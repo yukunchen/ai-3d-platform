@@ -108,10 +108,13 @@ jobs:
 
       - name: Post AI review comment
         uses: actions/github-script@v7
+        env:
+          VERDICT: ${{ steps.ai_review.outputs.verdict }}
+          REVIEW_TEXT: ${{ steps.ai_review.outputs.review_text }}
         with:
           script: |
-            const verdict = '${{ steps.ai_review.outputs.verdict }}';
-            const reviewText = `${{ steps.ai_review.outputs.review_text }}`;
+            const verdict = process.env.VERDICT || '';
+            const reviewText = process.env.REVIEW_TEXT || '';
             const icon = verdict.includes('APPROVED') ? '✅' : '❌';
             const body = `## ${icon} AI Security Review\n\n${reviewText}`;
             await github.rest.issues.createComment({

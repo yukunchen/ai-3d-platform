@@ -1,0 +1,138 @@
+name: Danger Detection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  danger-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      is_dangerous: ${{ steps.scan.outputs.is_dangerous }}
+      danger_files: ${{ steps.scan.outputs.danger_files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for dangerous changes
+        id: scan
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          DANGER_PATTERNS=(
+            ".github/workflows/"
+            "apps/worker/src/providers/"
+            ".env"
+            "docker-compose"
+            "apps/api/src/middleware/"
+            "apps/api/src/routes/auth"
+          )
+
+          DANGER_FILES=""
+          for file in $CHANGED; do
+            for pattern in "${DANGER_PATTERNS[@]}"; do
+              if [[ "$file" == *"$pattern"* ]]; then
+                DANGER_FILES="$DANGER_FILES\n$file"
+                break
+              fi
+            done
+          done
+
+          if [ -n "$DANGER_FILES" ]; then
+            echo "is_dangerous=true" >> $GITHUB_OUTPUT
+            {
+              echo "danger_files<<EOF"
+              echo -e "$DANGER_FILES"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "is_dangerous=false" >> $GITHUB_OUTPUT
+            echo "danger_files=" >> $GITHUB_OUTPUT
+          fi
+
+  # Second layer: AI strict review (dangerous PRs only)
+  ai-danger-review:
+    runs-on: ubuntu-latest
+    needs: danger-scan
+    if: needs.danger-scan.outputs.is_dangerous == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+
+      - name: AI security review
+        id: ai_review
+        run: |
+          DIFF=$(cat /tmp/pr.diff | head -c 12000)
+          DANGER_FILES="${{ needs.danger-scan.outputs.danger_files }}"
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg diff "$DIFF" \
+              --arg files "$DANGER_FILES" \
+              '{
+                model: "claude-opus-4-6",
+                max_tokens: 1024,
+                messages: [{
+                  role: "user",
+                  content: ("You are a security code reviewer.\nThe following sensitive files were changed:\n" + $files + "\n\nDiff:\n" + $diff + "\n\nReview this PR for security risks:\n1. Auth/permission bypass\n2. Secret/credential exposure\n3. Provider integration security\n4. CI/CD pipeline tampering\n\nYou MUST end your response with exactly one of:\nVERDICT: APPROVED\nVERDICT: REJECTED\n\nIf there are any significant security concerns, output REJECTED.")
+                }]
+              }')")
+
+          echo "AI Response:"
+          echo "$RESPONSE"
+
+          VERDICT=$(echo "$RESPONSE" | jq -r '.content[0].text' | grep "^VERDICT:" | tail -1)
+          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+
+          REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          echo "review_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post AI review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const verdict = '${{ steps.ai_review.outputs.verdict }}';
+            const reviewText = `${{ steps.ai_review.outputs.review_text }}`;
+            const icon = verdict.includes('APPROVED') ? '✅' : '❌';
+            const body = `## ${icon} AI Security Review\n\n${reviewText}`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Fail if AI rejected
+        if: "!contains(steps.ai_review.outputs.verdict, 'APPROVED')"
+        run: |
+          echo "AI security review REJECTED this PR. Fix the issues before requesting human review."
+          exit 1
+
+  # Third layer: human approval (only after AI passes)
+  human-approval:
+    runs-on: ubuntu-latest
+    needs: [danger-scan, ai-danger-review]
+    if: needs.danger-scan.outputs.is_dangerous == 'true'
+    environment: production
+    steps:
+      - name: Human approved
+        run: echo "Human reviewer approved dangerous changes after AI review. Proceeding."

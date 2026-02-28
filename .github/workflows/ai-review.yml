@@ -10,21 +10,49 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@v1
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+
+      - name: Run AI code review
+        id: ai_review
+        run: |
+          DIFF=$(cat /tmp/pr.diff | head -c 12000)
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg diff "$DIFF" \
+              '{
+                model: "claude-opus-4-6",
+                max_tokens: 1024,
+                messages: [{
+                  role: "user",
+                  content: ("Please review this pull request diff. Focus on:\n1. Code quality and correctness\n2. API contract violations (see docs/03_api_contract.md)\n3. Security issues (auth, input validation, secrets exposure)\n4. Provider isolation violations (apps/worker/src/providers/)\n5. Breaking changes to shared types (packages/shared/)\nBe concise and actionable.\n\nDiff:\n" + $diff)
+                }]
+              }')")
+
+          REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "AI review unavailable: " + .error.message')
+          echo "review_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post review comment
+        uses: actions/github-script@v7
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Please review this pull request. Focus on:
-            1. Code quality and correctness
-            2. API contract violations (see docs/03_api_contract.md)
-            3. Security issues (auth, input validation, secrets exposure)
-            4. Provider isolation violations (apps/worker/src/providers/)
-            5. Breaking changes to shared types (packages/shared/)
-            Post your review as a PR comment. Be concise and actionable.
+          script: |
+            const reviewText = `${{ steps.ai_review.outputs.review_text }}`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## AI Code Review\n\n${reviewText}`
+            });

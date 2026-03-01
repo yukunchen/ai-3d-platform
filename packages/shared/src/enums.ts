@@ -49,3 +49,13 @@ export enum Provider {
   Hunyuan = 'hunyuan',
   Meshy = 'meshy',
 }
+
+/**
+ * Texture style enum
+ */
+export enum TextureStyle {
+  Photorealistic = 'photorealistic',
+  Cartoon = 'cartoon',
+  Stylized = 'stylized',
+  Flat = 'flat',
+}

@@ -10,6 +10,7 @@ export interface ProviderContext {
 export interface ProviderResult {
   assetId: string;
   assetUrl: string;
+  textureMapIds?: Record<string, string>;
 }
 
 export interface ProviderAdapter {

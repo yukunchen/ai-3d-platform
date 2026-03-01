@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider } from '@ai-3d-platform/shared';
+import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle } from '@ai-3d-platform/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModelViewer from '../components/ModelViewer';
+import TexturePanel from '../components/TexturePanel';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -14,9 +15,13 @@ export default function Home() {
   const [frontImageUrl, setFrontImageUrl] = useState('');
   const [leftImageUrl, setLeftImageUrl] = useState('');
   const [rightImageUrl, setRightImageUrl] = useState('');
+  const [textureResolution, setTextureResolution] = useState<512 | 1024 | 2048>(1024);
+  const [textureStyle, setTextureStyle] = useState<TextureStyle>(TextureStyle.Photorealistic);
+  const [enableTextures, setEnableTextures] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<JobStatus | null>(null);
   const [assetUrl, setAssetUrl] = useState<string | null>(null);
+  const [textureMaps, setTextureMaps] = useState<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -47,6 +52,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setAssetUrl(null);
+    setTextureMaps(null);
 
     try {
       const body: CreateJobRequest = {
@@ -66,6 +72,9 @@ export default function Home() {
       }
       if (provider !== 'auto') {
         body.provider = provider;
+      }
+      if (enableTextures) {
+        body.textureOptions = { resolution: textureResolution, style: textureStyle };
       }
 
       const res = await fetch(`${API_URL}/v1/jobs`, {
@@ -115,6 +124,17 @@ export default function Home() {
           }
           console.log('[Page] Model URL:', modelUrl);
           setAssetUrl(modelUrl);
+
+          // Fetch texture maps if available
+          try {
+            const texRes = await fetch(`${API_URL}/v1/assets/${data.assetId}/textures`);
+            if (texRes.ok) {
+              setTextureMaps(await texRes.json());
+            }
+          } catch {
+            // Textures are optional; silently ignore
+          }
+
           break;
         } else if (data.status === JobStatus.Failed) {
           setError(data.error || 'Job failed');
@@ -161,6 +181,46 @@ export default function Home() {
             <option value={Provider.Meshy}>Meshy</option>
           </select>
         </div>
+
+        <div className={styles.inputGroup}>
+          <label>
+            <input
+              type="checkbox"
+              checked={enableTextures}
+              onChange={(e) => setEnableTextures(e.target.checked)}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Enable Texture Maps
+          </label>
+        </div>
+
+        {enableTextures && (
+          <>
+            <div className={styles.inputGroup}>
+              <label>Texture Resolution:</label>
+              <select
+                value={textureResolution}
+                onChange={(e) => setTextureResolution(Number(e.target.value) as 512 | 1024 | 2048)}
+              >
+                <option value={512}>512</option>
+                <option value={1024}>1024</option>
+                <option value={2048}>2048</option>
+              </select>
+            </div>
+            <div className={styles.inputGroup}>
+              <label>Texture Style:</label>
+              <select
+                value={textureStyle}
+                onChange={(e) => setTextureStyle(e.target.value as TextureStyle)}
+              >
+                <option value={TextureStyle.Photorealistic}>Photorealistic</option>
+                <option value={TextureStyle.Cartoon}>Cartoon</option>
+                <option value={TextureStyle.Stylized}>Stylized</option>
+                <option value={TextureStyle.Flat}>Flat</option>
+              </select>
+            </div>
+          </>
+        )}
 
         <div className={styles.inputGroup}>
           <label>Prompt:</label>
@@ -260,6 +320,7 @@ export default function Home() {
             <a href={assetUrl} download className={styles.downloadButton}>
               Download GLB
             </a>
+            {textureMaps && <TexturePanel textures={textureMaps} />}
           </div>
         </div>
       )}

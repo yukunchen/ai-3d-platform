@@ -1,6 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData } from '@ai-3d-platform/shared';
+import { JobData, TextureOptions, TextureStyle } from '@ai-3d-platform/shared';
 import { uploadToS3 } from '@ai-3d-platform/shared';
 import { generatePlaceholderGLB } from '../glb-generator';
 import * as https from 'https';
@@ -22,6 +22,7 @@ interface MeshyConfig {
 interface TaskResult {
   assetId: string;
   assetUrl: string;
+  textureMapIds?: Record<string, string>;
 }
 
 interface MeshyTaskResponse {
@@ -46,32 +47,56 @@ interface MeshyTaskResponse {
   };
 }
 
-export function buildTextTaskPayload(prompt: string): Record<string, unknown> {
-  return {
+function mapTextureStyle(style: TextureStyle): string {
+  switch (style) {
+    case TextureStyle.Photorealistic: return 'realistic';
+    case TextureStyle.Cartoon: return 'cartoon';
+    case TextureStyle.Stylized: return 'low-poly';
+    case TextureStyle.Flat: return 'pbr';
+  }
+}
+
+export function buildTextTaskPayload(prompt: string, textureOptions?: TextureOptions): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     mode: 'preview',
     prompt,
     should_remesh: true,
   };
+  if (textureOptions) {
+    payload.texture_resolution = textureOptions.resolution;
+    payload.art_style = mapTextureStyle(textureOptions.style);
+  }
+  return payload;
 }
 
-export function buildImageTaskPayload(imageUrl: string): Record<string, unknown> {
-  return {
+export function buildImageTaskPayload(imageUrl: string, textureOptions?: TextureOptions): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     image_url: imageUrl,
     should_remesh: true,
     should_texture: true,
     enable_pbr: true,
     save_pre_remeshed_model: false,
   };
+  if (textureOptions) {
+    payload.texture_resolution = textureOptions.resolution;
+    payload.art_style = mapTextureStyle(textureOptions.style);
+  }
+  return payload;
 }
 
-export function buildMultiViewTaskPayload(viewImages: { front: string; left: string; right: string }): Record<string, unknown> {
-  return {
+export function buildMultiViewTaskPayload(viewImages: { front: string; left: string; right: string }, textureOptions?: TextureOptions): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     image_urls: [viewImages.front, viewImages.left, viewImages.right],
     should_remesh: true,
     should_texture: true,
     enable_pbr: true,
     save_pre_remeshed_model: false,
   };
+  if (textureOptions) {
+    payload.texture_resolution = textureOptions.resolution;
+    payload.art_style = mapTextureStyle(textureOptions.style);
+  }
+  return payload;
 }
 
 /**
@@ -232,6 +257,22 @@ async function pollTaskStatus(
 }
 
 /**
+ * Extract texture map IDs from Meshy texture_urls response
+ */
+function extractTextureMapIds(
+  textureUrls?: Array<{ base_color?: string; metallic?: string; normal?: string; roughness?: string }>
+): Record<string, string> | undefined {
+  if (!textureUrls || textureUrls.length === 0) return undefined;
+  const first = textureUrls[0];
+  const maps: Record<string, string> = {};
+  if (first.base_color) maps.albedo = first.base_color;
+  if (first.normal) maps.normal = first.normal;
+  if (first.roughness) maps.roughness = first.roughness;
+  if (first.metallic) maps.metallic = first.metallic;
+  return Object.keys(maps).length > 0 ? maps : undefined;
+}
+
+/**
  * Upload GLB to S3 or local storage
  */
 async function uploadGLB(
@@ -278,7 +319,7 @@ export async function generateFromText(
   }
 
   const { apiKey } = config;
-  const { prompt } = job.data;
+  const { prompt, textureOptions } = job.data;
 
   console.log(`[Meshy] Generating 3D from text: "${prompt.substring(0, 50)}..."`);
 
@@ -286,7 +327,7 @@ export async function generateFromText(
   const createResponse = await makeRequest<{ result: string }>(
     'POST',
     '/openapi/v2/text-to-3d',
-    buildTextTaskPayload(prompt),
+    buildTextTaskPayload(prompt, textureOptions),
     apiKey
   );
 
@@ -306,6 +347,7 @@ export async function generateFromText(
 
   // Upload to storage
   const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
 
@@ -328,7 +370,7 @@ export async function generateFromImage(
   }
 
   const { apiKey } = config;
-  const { imageUrl } = job.data;
+  const { imageUrl, textureOptions } = job.data;
 
   if (!imageUrl) {
     throw new Error('Image URL is required for image-to-3D generation');
@@ -340,7 +382,7 @@ export async function generateFromImage(
   const createResponse = await makeRequest<{ result: string }>(
     'POST',
     '/openapi/v1/image-to-3d',
-    buildImageTaskPayload(imageUrl),
+    buildImageTaskPayload(imageUrl, textureOptions),
     apiKey
   );
 
@@ -360,6 +402,7 @@ export async function generateFromImage(
 
   // Upload to storage
   const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
 
@@ -382,7 +425,7 @@ export async function generateFromMultiView(
   }
 
   const { apiKey } = config;
-  const viewImages = job.data.viewImages;
+  const { viewImages, textureOptions } = job.data;
 
   if (!viewImages?.front || !viewImages?.left || !viewImages?.right) {
     throw new Error('front/left/right images are required for multiview-to-3D generation');
@@ -393,7 +436,7 @@ export async function generateFromMultiView(
   const createResponse = await makeRequest<{ result: string }>(
     'POST',
     '/openapi/v1/multi-image-to-3d',
-    buildMultiViewTaskPayload(viewImages),
+    buildMultiViewTaskPayload(viewImages, textureOptions),
     apiKey
   );
 
@@ -409,6 +452,7 @@ export async function generateFromMultiView(
   console.log(`[Meshy] Downloading GLB from: ${result.model_urls.glb}`);
   const glbBuffer = await downloadFile(result.model_urls.glb);
   const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
   console.log(`[Meshy] Generated multiview asset: ${uploadResult.assetId}`);
 
   return uploadResult;

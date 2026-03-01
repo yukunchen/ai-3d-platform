@@ -9,6 +9,7 @@ export interface AssetStoreLike {
 
 export interface AssetsRouterDeps {
   assetStore?: AssetStoreLike;
+  textureStore?: AssetStoreLike;
   signUrl?: (assetUrl: string) => Promise<string>;
 }
 
@@ -50,6 +51,7 @@ async function signAssetUrl(assetUrl: string): Promise<string> {
 export function createAssetsRouter(deps: AssetsRouterDeps = {}): Router {
   const router = Router();
   const assetStore = deps.assetStore || getDefaultAssetStore();
+  const textureStore = deps.textureStore || assetStore;
   const signer = deps.signUrl || signAssetUrl;
 
   router.get('/:assetId', async (req: Request, res: Response) => {
@@ -68,6 +70,18 @@ export function createAssetsRouter(deps: AssetsRouterDeps = {}): Router {
     };
 
     res.json(response);
+  });
+
+  router.get('/:assetId/textures', async (req: Request, res: Response) => {
+    const { assetId } = req.params;
+    const texturesJson = await textureStore.get(`textures:${assetId}`);
+
+    if (!texturesJson) {
+      res.status(404).json({ error: 'Textures not found' });
+      return;
+    }
+
+    res.json(JSON.parse(texturesJson));
   });
 
   router.get('/:assetId/preview', async (req: Request, res: Response) => {

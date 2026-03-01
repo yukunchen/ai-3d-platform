@@ -52,6 +52,11 @@ const worker = new Worker<JobData, JobReturn>(
     // Store asset URL in Redis
     await redis.set(`${ASSET_PREFIX}${result.assetId}`, result.assetUrl);
 
+    // Store texture map URLs in Redis if available
+    if (result.textureMapIds && Object.keys(result.textureMapIds).length > 0) {
+      await redis.set(`textures:${result.assetId}`, JSON.stringify(result.textureMapIds));
+    }
+
     console.log(`Job ${job.id} completed, asset: ${result.assetId}`);
 
     return result;

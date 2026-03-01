@@ -23,6 +23,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# API_URL is server-side: Next.js rewrites proxy /v1/* and /storage/* to this host.
+# Uses Docker internal network name "api" so the Next.js server can reach the API.
+ENV API_URL=http://api:3001
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static

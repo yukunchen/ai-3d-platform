@@ -27,7 +27,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  // Use relative URLs so Next.js rewrites proxy to the API server (see next.config.js).
+  // This avoids NEXT_PUBLIC_* build-time coupling to a specific host.
+  const API_URL = '';
 
   const validateInput = (): string | null => {
     if (!prompt.trim()) {
@@ -119,14 +121,12 @@ export default function Home() {
           const assetRes = await fetch(`${API_URL}/v1/assets/${data.assetId}`);
           const assetData = await assetRes.json();
 
-          // Convert to proxy-friendly URL
+          // /storage/* is proxied through Next.js rewrites — use as-is (relative).
+          // Absolute URLs (S3) are used directly.
           let modelUrl = assetData.downloadUrl;
-          // If it's a relative path starting with /storage, prepend the frontend origin
-          if (modelUrl.startsWith('/storage/')) {
-            modelUrl = window.location.origin + modelUrl;
-          } else if (modelUrl.includes('localhost:3001')) {
+          if (modelUrl.includes('localhost:3001')) {
+            // Local dev without rewrites: strip host so browser uses same origin
             modelUrl = modelUrl.replace('http://localhost:3001', '');
-            modelUrl = window.location.origin + modelUrl;
           }
           console.log('[Page] Model URL:', modelUrl);
           setAssetUrl(modelUrl);

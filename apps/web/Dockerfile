@@ -23,6 +23,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Bind to all interfaces (fixes getaddrinfo EAI_AGAIN in Docker)
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 # API_URL is server-side: Next.js rewrites proxy /v1/* and /storage/* to this host.
 # Uses Docker internal network name "api" so the Next.js server can reach the API.
 ENV API_URL=http://api:3001

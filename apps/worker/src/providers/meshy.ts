@@ -1,6 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData, TextureOptions, TextureStyle } from '@ai-3d-platform/shared';
+import { JobData, TextureOptions, TextureStyle, AssetFormat } from '@ai-3d-platform/shared';
 import { uploadToS3 } from '@ai-3d-platform/shared';
 import { generatePlaceholderGLB } from '../glb-generator';
 import * as https from 'https';
@@ -273,21 +273,23 @@ function extractTextureMapIds(
 }
 
 /**
- * Upload GLB to S3 or local storage
+ * Upload 3D asset to S3 or local storage
  */
-async function uploadGLB(
-  glbBuffer: Buffer,
+async function uploadAsset(
+  buffer: Buffer,
+  extension: string,
   jobId: string,
   s3Client: S3Client | null,
   bucket: string | undefined
 ): Promise<TaskResult> {
-  const assetId = `asset-${jobId}.glb`;
+  const assetId = `asset-${jobId}.${extension}`;
+  const contentType = extension === 'fbx' ? 'application/octet-stream' : 'model/gltf-binary';
 
   let assetUrl: string;
 
   if (s3Client && bucket) {
     const s3Key = `assets/${assetId}`;
-    await uploadToS3(s3Client, bucket, s3Key, glbBuffer, 'model/gltf-binary');
+    await uploadToS3(s3Client, bucket, s3Key, buffer, contentType);
     assetUrl = `s3://${bucket}/${s3Key}`;
   } else {
     // Fallback: store locally (for development without S3)
@@ -295,7 +297,7 @@ async function uploadGLB(
     const storageDir = path.join(process.cwd(), '..', 'api', 'storage');
     await fs.promises.mkdir(storageDir, { recursive: true });
     const filePath = path.join(storageDir, assetId);
-    await fs.promises.writeFile(filePath, glbBuffer);
+    await fs.promises.writeFile(filePath, buffer);
     // Use relative path - will be proxied through frontend
     assetUrl = `/storage/${assetId}`;
   }
@@ -337,16 +339,19 @@ export async function generateFromText(
   // Poll for completion
   const result = await pollTaskStatus(taskId, '/openapi/v2/text-to-3d', apiKey, job.id);
 
-  if (!result.model_urls?.glb) {
-    throw new Error('No GLB URL in Meshy response');
+  const useFbx = job.data.format === AssetFormat.FBX;
+  const modelUrl = useFbx ? result.model_urls?.fbx : result.model_urls?.glb;
+  const extension = useFbx ? 'fbx' : 'glb';
+
+  if (!modelUrl) {
+    throw new Error(`No ${extension.toUpperCase()} URL in Meshy response`);
   }
 
-  // Download GLB
-  console.log(`[Meshy] Downloading GLB from: ${result.model_urls.glb}`);
-  const glbBuffer = await downloadFile(result.model_urls.glb);
+  console.log(`[Meshy] Downloading ${extension.toUpperCase()} from: ${modelUrl}`);
+  const buffer = await downloadFile(modelUrl);
 
   // Upload to storage
-  const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
@@ -392,16 +397,19 @@ export async function generateFromImage(
   // Poll for completion
   const result = await pollTaskStatus(taskId, '/openapi/v1/image-to-3d', apiKey, job.id);
 
-  if (!result.model_urls?.glb) {
-    throw new Error('No GLB URL in Meshy response');
+  const useFbx = job.data.format === AssetFormat.FBX;
+  const modelUrl = useFbx ? result.model_urls?.fbx : result.model_urls?.glb;
+  const extension = useFbx ? 'fbx' : 'glb';
+
+  if (!modelUrl) {
+    throw new Error(`No ${extension.toUpperCase()} URL in Meshy response`);
   }
 
-  // Download GLB
-  console.log(`[Meshy] Downloading GLB from: ${result.model_urls.glb}`);
-  const glbBuffer = await downloadFile(result.model_urls.glb);
+  console.log(`[Meshy] Downloading ${extension.toUpperCase()} from: ${modelUrl}`);
+  const buffer = await downloadFile(modelUrl);
 
   // Upload to storage
-  const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
@@ -445,13 +453,17 @@ export async function generateFromMultiView(
 
   const result = await pollTaskStatus(taskId, '/openapi/v1/multi-image-to-3d', apiKey, job.id);
 
-  if (!result.model_urls?.glb) {
-    throw new Error('No GLB URL in Meshy multiview response');
+  const useFbx = job.data.format === AssetFormat.FBX;
+  const modelUrl = useFbx ? result.model_urls?.fbx : result.model_urls?.glb;
+  const extension = useFbx ? 'fbx' : 'glb';
+
+  if (!modelUrl) {
+    throw new Error(`No ${extension.toUpperCase()} URL in Meshy multiview response`);
   }
 
-  console.log(`[Meshy] Downloading GLB from: ${result.model_urls.glb}`);
-  const glbBuffer = await downloadFile(result.model_urls.glb);
-  const uploadResult = await uploadGLB(glbBuffer, job.id!, s3Client, bucket);
+  console.log(`[Meshy] Downloading ${extension.toUpperCase()} from: ${modelUrl}`);
+  const buffer = await downloadFile(modelUrl);
+  const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
   console.log(`[Meshy] Generated multiview asset: ${uploadResult.assetId}`);
 

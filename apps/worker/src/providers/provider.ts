@@ -1,6 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData } from '@ai-3d-platform/shared';
+import { JobData, AssetFormat } from '@ai-3d-platform/shared';
 
 export interface ProviderContext {
   s3Client: S3Client | null;
@@ -11,6 +11,7 @@ export interface ProviderResult {
   assetId: string;
   assetUrl: string;
   textureMapIds?: Record<string, string>;
+  format?: AssetFormat;
 }
 
 export interface ProviderAdapter {

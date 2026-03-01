@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle } from '@ai-3d-platform/shared';
+import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModelViewer from '../components/ModelViewer';
 import TexturePanel from '../components/TexturePanel';
@@ -10,6 +10,8 @@ import styles from './page.module.css';
 export default function Home() {
   const [jobType, setJobType] = useState<JobType>(JobType.Text);
   const [provider, setProvider] = useState<Provider | 'auto'>('auto');
+  const [format, setFormat] = useState<AssetFormat>(AssetFormat.GLB);
+  const [skeletonPreset, setSkeletonPreset] = useState<SkeletonPreset>(SkeletonPreset.None);
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [frontImageUrl, setFrontImageUrl] = useState('');
@@ -72,6 +74,10 @@ export default function Home() {
       }
       if (provider !== 'auto') {
         body.provider = provider;
+      }
+      body.format = format;
+      if (format === AssetFormat.FBX && skeletonPreset !== SkeletonPreset.None) {
+        body.skeletonOptions = { preset: skeletonPreset };
       }
       if (enableTextures) {
         body.textureOptions = { resolution: textureResolution, style: textureStyle };
@@ -181,6 +187,37 @@ export default function Home() {
             <option value={Provider.Meshy}>Meshy</option>
           </select>
         </div>
+
+        <div className={styles.inputGroup}>
+          <label>Format:</label>
+          <select
+            value={format}
+            onChange={(e) => {
+              const newFormat = e.target.value as AssetFormat;
+              setFormat(newFormat);
+              if (newFormat !== AssetFormat.FBX) {
+                setSkeletonPreset(SkeletonPreset.None);
+              }
+            }}
+          >
+            <option value={AssetFormat.GLB}>GLB (default)</option>
+            <option value={AssetFormat.FBX}>FBX</option>
+          </select>
+        </div>
+
+        {format === AssetFormat.FBX && (
+          <div className={styles.inputGroup}>
+            <label>Skeleton Preset:</label>
+            <select
+              value={skeletonPreset}
+              onChange={(e) => setSkeletonPreset(e.target.value as SkeletonPreset)}
+            >
+              <option value={SkeletonPreset.None}>None</option>
+              <option value={SkeletonPreset.Humanoid}>Humanoid</option>
+              <option value={SkeletonPreset.Quadruped}>Quadruped</option>
+            </select>
+          </div>
+        )}
 
         <div className={styles.inputGroup}>
           <label>
@@ -307,21 +344,33 @@ export default function Home() {
 
       {status === JobStatus.Succeeded && assetUrl && (
         <div className={styles.resultContainer}>
-          <div className={styles.modelViewerWrapper}>
-            <ModelViewer
-              modelUrl={assetUrl}
-              height={400}
-              enableZoom={true}
-              enablePan={true}
-            />
-          </div>
-          <div className={styles.result}>
-            <h3>Success!</h3>
-            <a href={assetUrl} download className={styles.downloadButton}>
-              Download GLB
-            </a>
-            {textureMaps && <TexturePanel textures={textureMaps} />}
-          </div>
+          {format === AssetFormat.FBX ? (
+            <div className={styles.result}>
+              <h3>Success!</h3>
+              <p>FBX format is not previewable in the browser.</p>
+              <a href={assetUrl} download className={styles.downloadButton}>
+                Download FBX
+              </a>
+            </div>
+          ) : (
+            <>
+              <div className={styles.modelViewerWrapper}>
+                <ModelViewer
+                  modelUrl={assetUrl}
+                  height={400}
+                  enableZoom={true}
+                  enablePan={true}
+                />
+              </div>
+              <div className={styles.result}>
+                <h3>Success!</h3>
+                <a href={assetUrl} download className={styles.downloadButton}>
+                  Download GLB
+                </a>
+                {textureMaps && <TexturePanel textures={textureMaps} />}
+              </div>
+            </>
+          )}
         </div>
       )}
     </main>

@@ -64,9 +64,11 @@ export function createAssetsRouter(deps: AssetsRouterDeps = {}): Router {
     }
 
     const downloadUrl = await signer(assetUrl);
+    const ext = assetUrl.split('.').pop()?.toLowerCase().split('?')[0];
+    const format = ext === 'fbx' ? AssetFormat.FBX : AssetFormat.GLB;
     const response: AssetResponse = {
       downloadUrl,
-      format: AssetFormat.GLB,
+      format,
     };
 
     res.json(response);

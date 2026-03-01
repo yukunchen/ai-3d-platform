@@ -16,28 +16,29 @@ describe('meshy textureOptions mapping', () => {
       expect(payload.art_style).toBeUndefined();
     });
 
-    it('maps Cartoon style to cartoon', () => {
+    it('omits art_style for Cartoon (unsupported by Meshy endpoints)', () => {
       const payload = buildTextTaskPayload('a toy', { resolution: 512, style: TextureStyle.Cartoon });
-      expect(payload.art_style).toBe('cartoon');
+      expect(payload.art_style).toBeUndefined();
+      expect(payload.texture_resolution).toBe(512);
     });
 
-    it('maps Stylized style to low-poly', () => {
+    it('omits art_style for Stylized (unsupported by Meshy endpoints)', () => {
       const payload = buildTextTaskPayload('a toy', { resolution: 512, style: TextureStyle.Stylized });
-      expect(payload.art_style).toBe('low-poly');
+      expect(payload.art_style).toBeUndefined();
     });
 
-    it('maps Flat style to pbr', () => {
+    it('omits art_style for Flat (unsupported by Meshy endpoints)', () => {
       const payload = buildTextTaskPayload('a toy', { resolution: 2048, style: TextureStyle.Flat });
-      expect(payload.art_style).toBe('pbr');
+      expect(payload.art_style).toBeUndefined();
       expect(payload.texture_resolution).toBe(2048);
     });
   });
 
   describe('buildImageTaskPayload with textureOptions', () => {
-    it('includes texture_resolution and art_style when textureOptions provided', () => {
+    it('includes texture_resolution but omits art_style for unsupported styles', () => {
       const payload = buildImageTaskPayload('https://example.com/img.png', { resolution: 2048, style: TextureStyle.Cartoon });
       expect(payload.texture_resolution).toBe(2048);
-      expect(payload.art_style).toBe('cartoon');
+      expect(payload.art_style).toBeUndefined();
     });
 
     it('omits texture fields when no textureOptions', () => {
@@ -54,10 +55,10 @@ describe('meshy textureOptions mapping', () => {
       right: 'https://example.com/right.png',
     };
 
-    it('includes texture_resolution and art_style when textureOptions provided', () => {
+    it('includes texture_resolution but omits art_style for unsupported styles', () => {
       const payload = buildMultiViewTaskPayload(viewImages, { resolution: 1024, style: TextureStyle.Stylized });
       expect(payload.texture_resolution).toBe(1024);
-      expect(payload.art_style).toBe('low-poly');
+      expect(payload.art_style).toBeUndefined();
     });
 
     it('omits texture fields when no textureOptions', () => {

@@ -96,19 +96,24 @@ jobs:
           script: |
             cd ${{ secrets.APP_DEPLOY_PATH }}
 
-            # Update image tags
+            # Sync latest compose files from repo
+            git pull origin master
+
+            # Set image tags
             export API_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
             export WORKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
             export WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+            export NEXT_PUBLIC_API_URL=http://${{ secrets.APP_SERVER_HOST }}:3001
 
-            # Pull latest images
-            docker compose pull
+            # Login to GHCR and pull pre-built images
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull
 
             # Rolling restart
-            docker compose up -d
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
             # Health check
             sleep 10
-            curl -f http://localhost:3001/health || (docker compose logs api && exit 1)
+            curl -f http://localhost:3001/health || (docker compose -f docker-compose.prod.yml logs api && exit 1)
 
             echo "Deploy OK: ${{ github.sha }}"

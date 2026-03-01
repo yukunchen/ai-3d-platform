@@ -1,0 +1,53 @@
+version: '3.9'
+
+# Production compose: uses pre-built GHCR images (set API_IMAGE, WORKER_IMAGE, WEB_IMAGE before running)
+# Example:
+#   export API_IMAGE=ghcr.io/yukunchen/ai-3d-platform-api:<sha>
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ${WORKER_IMAGE}
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    depends_on:
+      - api

@@ -26,6 +26,8 @@ services:
       - NODE_ENV=production
     env_file:
       - .env
+    volumes:
+      - storage:/app/apps/api/storage
     depends_on:
       redis:
         condition: service_healthy
@@ -39,6 +41,8 @@ services:
       - NODE_ENV=production
     env_file:
       - .env
+    volumes:
+      - storage:/api/storage
     depends_on:
       redis:
         condition: service_healthy
@@ -53,3 +57,6 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     depends_on:
       - api
+
+volumes:
+  storage:

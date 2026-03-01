@@ -1,4 +1,4 @@
-import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider, TextureStyle } from './enums';
+import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider, TextureStyle, SkeletonPreset } from './enums';
 
 /**
  * Texture generation options
@@ -15,6 +15,13 @@ export interface MultiViewImages {
 }
 
 /**
+ * Skeleton rig options (only valid when format=FBX)
+ */
+export interface SkeletonOptions {
+  preset: SkeletonPreset;
+}
+
+/**
  * Create job request body
  */
 export interface CreateJobRequest {
@@ -23,7 +30,9 @@ export interface CreateJobRequest {
   imageUrl?: string;
   viewImages?: MultiViewImages;
   provider?: Provider;
+  format?: AssetFormat;
   textureOptions?: TextureOptions;
+  skeletonOptions?: SkeletonOptions;
 }
 
 /**
@@ -62,7 +71,9 @@ export interface JobData {
   imageUrl?: string;
   viewImages?: MultiViewImages;
   provider?: Provider;
+  format?: AssetFormat;
   textureOptions?: TextureOptions;
+  skeletonOptions?: SkeletonOptions;
   createdAt: number;
 }
 

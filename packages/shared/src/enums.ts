@@ -59,3 +59,12 @@ export enum TextureStyle {
   Stylized = 'stylized',
   Flat = 'flat',
 }
+
+/**
+ * Skeleton rig preset enum
+ */
+export enum SkeletonPreset {
+  None = 'none',
+  Humanoid = 'humanoid',
+  Quadruped = 'quadruped',
+}

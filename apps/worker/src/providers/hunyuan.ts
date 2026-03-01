@@ -6,7 +6,7 @@ import * as path from 'path';
 import { URL } from 'url';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData } from '@ai-3d-platform/shared';
+import { JobData, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
 import { uploadToS3 } from '@ai-3d-platform/shared';
 import { ProviderAdapter, ProviderContext, ProviderResult } from './provider';
 
@@ -81,6 +81,8 @@ export function buildHunyuanSubmitPayload(
   const isImage = jobData.type === 'image';
   const isMultiView = jobData.type === 'multiview';
 
+  const effectiveResultFormat = jobData.format === AssetFormat.FBX ? 'FBX' : options.resultFormat;
+
   if (options.mode === 'rapid') {
     if (isMultiView) {
       throw new Error('Hunyuan rapid mode does not support multiview input; use HUNYUAN_MODE=pro');
@@ -97,9 +99,13 @@ export function buildHunyuanSubmitPayload(
     } else {
       payload.Prompt = jobData.prompt;
     }
-    if (options.resultFormat) payload.ResultFormat = options.resultFormat;
+    if (effectiveResultFormat) payload.ResultFormat = effectiveResultFormat;
     if (typeof options.enablePbr === 'boolean') payload.EnablePBR = options.enablePbr;
     if (typeof options.enableGeometry === 'boolean') payload.EnableGeometry = options.enableGeometry;
+    const skeletonPreset = jobData.skeletonOptions?.preset;
+    if (skeletonPreset && skeletonPreset !== SkeletonPreset.None) {
+      payload.SkeletonPreset = skeletonPreset;
+    }
     return { action: 'SubmitHunyuanTo3DRapidJob', payload };
   }
 
@@ -125,10 +131,15 @@ export function buildHunyuanSubmitPayload(
   } else {
     payload.Prompt = jobData.prompt;
   }
+  if (effectiveResultFormat) payload.ResultFormat = effectiveResultFormat;
   if (typeof options.enablePbr === 'boolean') payload.EnablePBR = options.enablePbr;
   if (typeof options.faceCount === 'number') payload.FaceCount = options.faceCount;
   if (options.generateType) payload.GenerateType = options.generateType;
   if (options.polygonType) payload.PolygonType = options.polygonType;
+  const skeletonPreset = jobData.skeletonOptions?.preset;
+  if (skeletonPreset && skeletonPreset !== SkeletonPreset.None) {
+    payload.SkeletonPreset = skeletonPreset;
+  }
   return { action: 'SubmitHunyuanTo3DProJob', payload };
 }
 
@@ -417,16 +428,17 @@ async function uploadResultFile(
   return { assetId, assetUrl };
 }
 
-function pickResultFile(files: HunyuanFile3D[] | undefined): { url: string; type: string } {
+function pickResultFile(files: HunyuanFile3D[] | undefined, preferredType?: string): { url: string; type: string } {
   if (!files || files.length === 0) {
     throw new Error('No result files returned from Hunyuan');
   }
+  const preferred = preferredType ? files.find((f) => f.Type?.toLowerCase() === preferredType && f.Url) : null;
   const glb = files.find((f) => f.Type?.toLowerCase() === 'glb' && f.Url);
-  const chosen = glb || files.find((f) => f.Url) || files[0];
+  const chosen = preferred || glb || files.find((f) => f.Url) || files[0];
   if (!chosen.Url) {
     throw new Error('Result file URL is missing');
   }
-  const type = (chosen.Type || 'glb').toLowerCase();
+  const type = (chosen.Type || preferredType || 'glb').toLowerCase();
   return { url: chosen.Url, type };
 }
 
@@ -464,13 +476,14 @@ async function generate(job: Job<JobData, ProviderResult>, ctx: ProviderContext)
     throw new Error(result.Response.ErrorMessage || 'Hunyuan job failed');
   }
 
-  const { url, type } = pickResultFile(result.Response.ResultFile3Ds);
+  const preferredType = job.data.format === AssetFormat.FBX ? 'fbx' : 'glb';
+  const { url, type } = pickResultFile(result.Response.ResultFile3Ds, preferredType);
   const t2 = Date.now();
   const buffer = await downloadFile(url);
   console.log(`${tag} download done size=${buffer.length}bytes +${Date.now() - t2}ms`);
 
   const t3 = Date.now();
-  const extension = type || 'glb';
+  const extension = type || preferredType;
   const uploadResult = await uploadResultFile(buffer, extension, job.id!, ctx.s3Client, ctx.bucket);
   console.log(`${tag} upload done +${Date.now() - t3}ms | total +${Date.now() - t0}ms`);
 

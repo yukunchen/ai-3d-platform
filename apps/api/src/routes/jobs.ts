@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider, TextureStyle } from '@ai-3d-platform/shared';
+import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
 import { saveJobToHistory } from './history';
 
 type QueueState = 'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | string;
@@ -50,6 +50,8 @@ const createJobSchema = z
         ]),
       })
       .optional(),
+    format: z.nativeEnum(AssetFormat).optional(),
+    skeletonOptions: z.object({ preset: z.nativeEnum(SkeletonPreset) }).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === JobType.Image && !data.imageUrl) {
@@ -96,6 +98,13 @@ const createJobSchema = z
         });
       }
     }
+    if (data.skeletonOptions && data.format !== AssetFormat.FBX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'skeletonOptions is only valid when format is FBX',
+        path: ['skeletonOptions'],
+      });
+    }
   });
 
 export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobRouterDeps = {}): Router {
@@ -115,7 +124,9 @@ export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobR
         imageUrl: body.imageUrl,
         viewImages: body.viewImages,
         provider: body.provider,
+        format: body.format,
         textureOptions: body.textureOptions,
+        skeletonOptions: body.skeletonOptions,
         createdAt: Date.now(),
       };
 

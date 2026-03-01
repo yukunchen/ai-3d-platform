@@ -15,6 +15,9 @@ COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 COPY tsconfig.json ./
 
+# Set API_URL before build: Next.js standalone bakes rewrites at build time,
+# so this must be set in the builder stage (not just runtime).
+ENV API_URL=http://api:3001
 RUN pnpm --filter @ai-3d-platform/web build
 
 # ---- runtime ----

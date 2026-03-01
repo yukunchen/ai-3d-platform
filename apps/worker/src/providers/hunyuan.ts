@@ -440,15 +440,24 @@ async function generate(job: Job<JobData, ProviderResult>, ctx: ProviderContext)
     console.warn('[Hunyuan] textureOptions are not supported by Hunyuan provider; ignoring');
   }
 
+  const t0 = Date.now();
+  const tag = `[Hunyuan][${job.id}]`;
+
   let useImageBase64 = config.imageInputMode === 'base64';
   let jobId = await submitJob(job, config, { useImageBase64 });
+  console.log(`${tag} submitted hunyuanJobId=${jobId} +${Date.now() - t0}ms`);
+
+  let t1 = Date.now();
   let result = await pollJob(jobId, config);
+  console.log(`${tag} poll done status=${result.Response.Status} +${Date.now() - t1}ms`);
 
   if (result.Response.Status === 'FAIL' && shouldRetryWithBase64(job.data, result, config, useImageBase64)) {
-    console.warn('[Hunyuan] URL download failed, retrying image job with ImageBase64');
+    console.warn(`${tag} URL download failed, retrying with ImageBase64`);
     useImageBase64 = true;
     jobId = await submitJob(job, config, { useImageBase64 });
+    t1 = Date.now();
     result = await pollJob(jobId, config);
+    console.log(`${tag} retry poll done status=${result.Response.Status} +${Date.now() - t1}ms`);
   }
 
   if (result.Response.Status === 'FAIL') {
@@ -456,10 +465,16 @@ async function generate(job: Job<JobData, ProviderResult>, ctx: ProviderContext)
   }
 
   const { url, type } = pickResultFile(result.Response.ResultFile3Ds);
+  const t2 = Date.now();
   const buffer = await downloadFile(url);
-  const extension = type || 'glb';
+  console.log(`${tag} download done size=${buffer.length}bytes +${Date.now() - t2}ms`);
 
-  return uploadResultFile(buffer, extension, job.id!, ctx.s3Client, ctx.bucket);
+  const t3 = Date.now();
+  const extension = type || 'glb';
+  const uploadResult = await uploadResultFile(buffer, extension, job.id!, ctx.s3Client, ctx.bucket);
+  console.log(`${tag} upload done +${Date.now() - t3}ms | total +${Date.now() - t0}ms`);
+
+  return uploadResult;
 }
 
 export function createHunyuanProvider(): ProviderAdapter {

@@ -99,21 +99,23 @@ jobs:
             # Sync latest compose files from repo
             git pull origin master
 
-            # Set image tags
-            export API_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
-            export WORKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
-            export WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
-            export NEXT_PUBLIC_API_URL=http://${{ secrets.APP_SERVER_HOST }}:3001
+            # Persist image tags so docker compose can resolve vars after deploy
+            cat > .env.images <<'IMGEOF'
+            API_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+            WORKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
+            WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+            IMGEOF
 
             # Login to GHCR and pull pre-built images
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml --env-file .env.images pull
 
-            # Rolling restart
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # Rolling restart (force recreate to pick up new images)
+            docker compose -f docker-compose.prod.yml --env-file .env.images up -d --remove-orphans --force-recreate
 
             # Health check
-            sleep 10
-            curl -f http://localhost:3001/health || (docker compose -f docker-compose.prod.yml logs api && exit 1)
+            sleep 15
+            curl -f http://localhost:3001/health || (docker compose -f docker-compose.prod.yml --env-file .env.images logs api && exit 1)
+            curl -f http://localhost:3000 > /dev/null || (docker compose -f docker-compose.prod.yml --env-file .env.images logs web && exit 1)
 
             echo "Deploy OK: ${{ github.sha }}"

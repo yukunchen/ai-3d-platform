@@ -436,6 +436,10 @@ async function generate(job: Job<JobData, ProviderResult>, ctx: ProviderContext)
     throw new Error('Hunyuan credentials are not configured');
   }
 
+  if (job.data.textureOptions) {
+    console.warn('[Hunyuan] textureOptions are not supported by Hunyuan provider; ignoring');
+  }
+
   let useImageBase64 = config.imageInputMode === 'base64';
   let jobId = await submitJob(job, config, { useImageBase64 });
   let result = await pollJob(jobId, config);

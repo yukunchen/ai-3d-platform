@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider } from '@ai-3d-platform/shared';
+import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider, TextureStyle } from '@ai-3d-platform/shared';
 import { saveJobToHistory } from './history';
 
 type QueueState = 'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | string;
@@ -39,6 +39,17 @@ const createJobSchema = z
       })
       .optional(),
     provider: z.enum([Provider.Hunyuan, Provider.Meshy]).optional(),
+    textureOptions: z
+      .object({
+        resolution: z.union([z.literal(512), z.literal(1024), z.literal(2048)]),
+        style: z.enum([
+          TextureStyle.Photorealistic,
+          TextureStyle.Cartoon,
+          TextureStyle.Stylized,
+          TextureStyle.Flat,
+        ]),
+      })
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === JobType.Image && !data.imageUrl) {
@@ -104,6 +115,7 @@ export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobR
         imageUrl: body.imageUrl,
         viewImages: body.viewImages,
         provider: body.provider,
+        textureOptions: body.textureOptions,
         createdAt: Date.now(),
       };
 

@@ -1,4 +1,12 @@
-import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider } from './enums';
+import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider, TextureStyle } from './enums';
+
+/**
+ * Texture generation options
+ */
+export interface TextureOptions {
+  resolution: 512 | 1024 | 2048;
+  style: TextureStyle;
+}
 
 export interface MultiViewImages {
   front: string;
@@ -15,6 +23,7 @@ export interface CreateJobRequest {
   imageUrl?: string;
   viewImages?: MultiViewImages;
   provider?: Provider;
+  textureOptions?: TextureOptions;
 }
 
 /**
@@ -53,6 +62,7 @@ export interface JobData {
   imageUrl?: string;
   viewImages?: MultiViewImages;
   provider?: Provider;
+  textureOptions?: TextureOptions;
   createdAt: number;
 }
 
@@ -65,6 +75,7 @@ export interface JobResult {
   format: AssetFormat;
   provider: string;
   generationTimeMs: number;
+  textureMapIds?: Record<string, string>;
 }
 
 /**

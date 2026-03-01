@@ -47,12 +47,14 @@ interface MeshyTaskResponse {
   };
 }
 
-function mapTextureStyle(style: TextureStyle): string {
+// Meshy v2 text-to-3d (preview mode) only accepts 'realistic' for art_style.
+// Image-to-3d and multi-image-to-3d endpoints also only support 'realistic'.
+// Other TextureStyle values control visual intent but are ignored server-side;
+// we omit art_style entirely for non-realistic styles to avoid 400 errors.
+function mapTextureStyle(style: TextureStyle): string | undefined {
   switch (style) {
     case TextureStyle.Photorealistic: return 'realistic';
-    case TextureStyle.Cartoon: return 'cartoon';
-    case TextureStyle.Stylized: return 'low-poly';
-    case TextureStyle.Flat: return 'pbr';
+    default: return undefined; // unsupported by current Meshy endpoints
   }
 }
 
@@ -64,7 +66,8 @@ export function buildTextTaskPayload(prompt: string, textureOptions?: TextureOpt
   };
   if (textureOptions) {
     payload.texture_resolution = textureOptions.resolution;
-    payload.art_style = mapTextureStyle(textureOptions.style);
+    const artStyle = mapTextureStyle(textureOptions.style);
+    if (artStyle) payload.art_style = artStyle;
   }
   return payload;
 }
@@ -79,7 +82,8 @@ export function buildImageTaskPayload(imageUrl: string, textureOptions?: Texture
   };
   if (textureOptions) {
     payload.texture_resolution = textureOptions.resolution;
-    payload.art_style = mapTextureStyle(textureOptions.style);
+    const artStyle = mapTextureStyle(textureOptions.style);
+    if (artStyle) payload.art_style = artStyle;
   }
   return payload;
 }
@@ -94,7 +98,8 @@ export function buildMultiViewTaskPayload(viewImages: { front: string; left: str
   };
   if (textureOptions) {
     payload.texture_resolution = textureOptions.resolution;
-    payload.art_style = mapTextureStyle(textureOptions.style);
+    const artStyle = mapTextureStyle(textureOptions.style);
+    if (artStyle) payload.art_style = artStyle;
   }
   return payload;
 }

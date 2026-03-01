@@ -21,7 +21,8 @@ services:
     ports:
       - '3001:3001'
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - NODE_ENV=production
     env_file:
       - .env
@@ -33,7 +34,8 @@ services:
     image: ${WORKER_IMAGE}
     restart: unless-stopped
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - NODE_ENV=production
     env_file:
       - .env

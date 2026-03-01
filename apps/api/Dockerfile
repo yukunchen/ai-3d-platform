@@ -15,6 +15,7 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY tsconfig.json ./
 
+RUN pnpm --filter @ai-3d-platform/shared build
 RUN pnpm --filter @ai-3d-platform/api build
 
 # ---- runtime ----
@@ -29,7 +30,9 @@ COPY apps/api/package.json ./apps/api/
 RUN pnpm install --frozen-lockfile --prod
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/packages/shared/src ./packages/shared/src
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+RUN node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('packages/shared/package.json','utf8'));p.main='./dist/index.js';p.exports={'.':'./dist/index.js'};fs.writeFileSync('packages/shared/package.json',JSON.stringify(p,null,2))"
 
 ENV NODE_ENV=production
 EXPOSE 3001

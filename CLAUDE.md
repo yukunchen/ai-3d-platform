@@ -53,6 +53,29 @@
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 
+## Multi-Session Branch Workflow
+
+### Session Roles
+This project uses parallel worktree sessions. Each session has a fixed role:
+
+| Session | Worktree | Role |
+|---------|----------|------|
+| master session | `ai-3d-platform` | PR review, conflict resolution, merge to master |
+| feature sessions | `ai-3d-texture`, `ai-3d-skeleton`, `ai-3d-cicd` | Implement feature, push branch, open PR — then STOP |
+
+### Rules for Feature Branch Sessions (STRICT)
+- **NEVER merge your own PR into master** — the master session owns all merges
+- Your job ends at: implement → commit → push → `gh pr create` → update `tasks/todo.md` → wait
+- Do NOT run `gh pr merge`, `git merge master`, or `gh api .../merge` under any circumstances
+- If you see a merge conflict, report it in the PR description and stop — the master session resolves it
+- Do NOT rebase onto master yourself — the master session handles rebasing before merge
+
+### Rules for Master Session
+- Pull latest master before each merge: `git pull origin master`
+- Merge order: texture-maps → skeleton-rig → cicd-pipeline
+- After each merge, run `pnpm test:all` before merging the next PR
+- Resolve `packages/shared` conflicts manually, keeping both feature additions
+
 ## Change Boundaries (Anti-Overwrite)
 
 ### Protected Areas (read-only by default)

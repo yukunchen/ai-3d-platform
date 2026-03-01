@@ -12,6 +12,7 @@ out
 # local env files
 .env
 .env*
+!.env.images
 
 # turbo
 .turbo

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { URL } from 'url';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
+import { JobData, AssetFormat, SkeletonPreset, AnimationType } from '@ai-3d-platform/shared';
 import { uploadToS3 } from '@ai-3d-platform/shared';
 import { ProviderAdapter, ProviderContext, ProviderResult } from './provider';
 
@@ -106,6 +106,10 @@ export function buildHunyuanSubmitPayload(
     if (skeletonPreset && skeletonPreset !== SkeletonPreset.None) {
       payload.SkeletonPreset = skeletonPreset;
     }
+    const animationType = jobData.animationOptions?.type;
+    if (animationType && animationType !== AnimationType.None) {
+      payload.AnimationPreset = animationType;
+    }
     return { action: 'SubmitHunyuanTo3DRapidJob', payload };
   }
 
@@ -139,6 +143,10 @@ export function buildHunyuanSubmitPayload(
   const skeletonPreset = jobData.skeletonOptions?.preset;
   if (skeletonPreset && skeletonPreset !== SkeletonPreset.None) {
     payload.SkeletonPreset = skeletonPreset;
+  }
+  const animationType = jobData.animationOptions?.type;
+  if (animationType && animationType !== AnimationType.None) {
+    payload.AnimationPreset = animationType;
   }
   return { action: 'SubmitHunyuanTo3DProJob', payload };
 }

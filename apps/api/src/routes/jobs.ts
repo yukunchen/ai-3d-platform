@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
+import { JobData, JobStatus, JobType, CreateJobResponse, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset, AnimationType } from '@ai-3d-platform/shared';
 import { saveJobToHistory } from './history';
 
 type QueueState = 'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | string;
@@ -52,6 +52,10 @@ const createJobSchema = z
       .optional(),
     format: z.nativeEnum(AssetFormat).optional(),
     skeletonOptions: z.object({ preset: z.nativeEnum(SkeletonPreset) }).optional(),
+    animationOptions: z.object({
+      type: z.nativeEnum(AnimationType),
+      customClipUrl: z.string().url().optional(),
+    }).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === JobType.Image && !data.imageUrl) {
@@ -105,6 +109,13 @@ const createJobSchema = z
         path: ['skeletonOptions'],
       });
     }
+    if (data.animationOptions && data.animationOptions.type !== AnimationType.None && data.format !== AssetFormat.FBX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'animationOptions is only valid when format is FBX',
+        path: ['animationOptions'],
+      });
+    }
   });
 
 export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobRouterDeps = {}): Router {
@@ -127,6 +138,7 @@ export function createJobRouter(queue: JobQueueLike | Queue<JobData>, deps: JobR
         format: body.format,
         textureOptions: body.textureOptions,
         skeletonOptions: body.skeletonOptions,
+        animationOptions: body.animationOptions,
         createdAt: Date.now(),
       };
 

@@ -1,4 +1,4 @@
-import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider, TextureStyle, SkeletonPreset } from './enums';
+import { JobStatus, JobType, AssetFormat, UserRole, AuthProvider, Provider, TextureStyle, SkeletonPreset, AnimationType } from './enums';
 
 /**
  * Texture generation options
@@ -22,6 +22,14 @@ export interface SkeletonOptions {
 }
 
 /**
+ * Animation options (only valid when format=FBX)
+ */
+export interface AnimationOptions {
+  type: AnimationType;
+  customClipUrl?: string;  // only when type === Custom
+}
+
+/**
  * Create job request body
  */
 export interface CreateJobRequest {
@@ -33,6 +41,7 @@ export interface CreateJobRequest {
   format?: AssetFormat;
   textureOptions?: TextureOptions;
   skeletonOptions?: SkeletonOptions;
+  animationOptions?: AnimationOptions;
 }
 
 /**
@@ -74,6 +83,7 @@ export interface JobData {
   format?: AssetFormat;
   textureOptions?: TextureOptions;
   skeletonOptions?: SkeletonOptions;
+  animationOptions?: AnimationOptions;
   createdAt: number;
 }
 

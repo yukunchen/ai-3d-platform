@@ -68,3 +68,14 @@ export enum SkeletonPreset {
   Humanoid = 'humanoid',
   Quadruped = 'quadruped',
 }
+
+/**
+ * Animation type enum
+ */
+export enum AnimationType {
+  None = 'none',
+  Idle = 'idle',
+  Walk = 'walk',
+  Run = 'run',
+  Custom = 'custom',
+}

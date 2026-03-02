@@ -33,6 +33,9 @@ test('register flow: fill form, submit, verify generation form appears', async (
 
   await page.goto('/');
 
+  // Wait for client hydration to complete and show auth form
+  await page.waitForSelector('[data-testid="auth-email"]', { timeout: 30000 });
+
   // Should show login form by default
   await expect(page.getByTestId('auth-email')).toBeVisible();
 
@@ -65,6 +68,9 @@ test('login flow: fill form, submit, verify generation form appears', async ({ p
   });
 
   await page.goto('/');
+
+  // Wait for client hydration to complete and show auth form
+  await page.waitForSelector('[data-testid="auth-email"]', { timeout: 30000 });
 
   // Should show login form by default
   await expect(page.getByTestId('auth-email')).toBeVisible();

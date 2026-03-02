@@ -12,6 +12,7 @@ export interface ProviderResult {
   assetUrl: string;
   textureMapIds?: Record<string, string>;
   format?: AssetFormat;
+  costCents?: number;
 }
 
 export interface ProviderAdapter {

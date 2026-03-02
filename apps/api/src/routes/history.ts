@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import Redis from 'ioredis';
 import { z } from 'zod';
-import { JobStatus, JobType } from '@ai-3d-platform/shared';
+import { JobStatus, JobType, JobHistoryRecord } from '@ai-3d-platform/shared';
 
 const HISTORY_KEY = 'job:history';
 const MAX_HISTORY_SIZE = 1000;
@@ -28,18 +28,6 @@ function getRedisClient(): Redis {
 }
 
 /**
- * Job history record stored in Redis
- */
-export interface JobHistoryRecord {
-  jobId: string;
-  type: JobType;
-  prompt: string;
-  status: JobStatus;
-  createdAt: number;
-  assetId: string | null;
-}
-
-/**
  * Save job to history
  */
 export async function saveJobToHistory(
@@ -47,7 +35,8 @@ export async function saveJobToHistory(
   type: JobType,
   prompt: string,
   status: JobStatus = JobStatus.Queued,
-  assetId: string | null = null
+  assetId: string | null = null,
+  cost?: number
 ): Promise<void> {
   const client = getRedisClient();
 
@@ -59,6 +48,17 @@ export async function saveJobToHistory(
     createdAt: Date.now(),
     assetId,
   };
+
+  if (cost !== undefined) {
+    record.cost = cost;
+
+    // Track daily budget
+    const today = new Date().toISOString().slice(0, 10);
+    const budgetKey = `budget:daily:${today}`;
+    await client.incrby(budgetKey, cost);
+    // Expire budget keys after 48 hours to avoid unbounded growth
+    await client.expire(budgetKey, 48 * 60 * 60);
+  }
 
   // Push to the beginning of the list (most recent first)
   await client.lpush(HISTORY_KEY, JSON.stringify(record));
@@ -110,6 +110,13 @@ export interface JobHistoryResponse {
     total: number;
     totalPages: number;
   };
+}
+
+export interface DailyBudgetResponse {
+  date: string;
+  totalCents: number;
+  limitCents: number;
+  exceeded: boolean;
 }
 
 export function createHistoryRouter(): Router {
@@ -164,6 +171,37 @@ export function createHistoryRouter(): Router {
       }
       console.error('Error getting job history:', error);
       res.status(500).json({ error: 'Failed to get job history' });
+    }
+  });
+
+  return router;
+}
+
+export function createBudgetRouter(): Router {
+  const router = Router();
+
+  // GET /v1/budget/daily - Get daily budget status
+  router.get('/daily', async (_req: Request, res: Response) => {
+    try {
+      const client = getRedisClient();
+      const today = new Date().toISOString().slice(0, 10);
+      const budgetKey = `budget:daily:${today}`;
+
+      const totalRaw = await client.get(budgetKey);
+      const totalCents = totalRaw ? parseInt(totalRaw, 10) : 0;
+      const limitCents = parseInt(process.env.DAILY_BUDGET_CENTS || '10000', 10);
+
+      const response: DailyBudgetResponse = {
+        date: today,
+        totalCents,
+        limitCents,
+        exceeded: totalCents >= limitCents,
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error('Error getting daily budget:', error);
+      res.status(500).json({ error: 'Failed to get daily budget' });
     }
   });
 

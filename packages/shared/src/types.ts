@@ -131,3 +131,17 @@ export interface ApiKey {
   createdAt: number;
   expiresAt: number;
 }
+
+/**
+ * Job history record stored in Redis
+ */
+export interface JobHistoryRecord {
+  jobId: string;
+  type: JobType;
+  prompt: string;
+  status: JobStatus;
+  createdAt: number;
+  assetId: string | null;
+  cost?: number;
+  thumbnailUrl?: string;
+}

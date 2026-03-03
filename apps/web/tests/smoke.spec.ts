@@ -97,6 +97,8 @@ test('multiview submit sends front/left/right payload', async ({ page }) => {
 test('FBX format shows animation dropdown and submits animationOptions', async ({ page }) => {
   let capturedBody: Record<string, unknown> | null = null;
 
+  await seedAuthToken(page);
+
   await page.route('**/v1/jobs', async (route, request) => {
     if (request.method() !== 'POST') {
       await route.fallback();
@@ -120,17 +122,18 @@ test('FBX format shows animation dropdown and submits animationOptions', async (
 
   await page.goto('/');
 
-  // Select FBX format
-  const formatSelect = page.locator('select').nth(2);
-  await formatSelect.selectOption('fbx');
+  // Wait for the form to be visible
+  await page.waitForSelector('text=Format:');
+
+  // Select FBX format - find the select after the Format label
+  await page.locator('label:has-text("Format:") + select').selectOption('fbx');
 
   // Verify animation dropdown is visible
   const animationLabel = page.getByText('Animation:');
   await expect(animationLabel).toBeVisible();
 
-  // Select Walk animation
-  const animationSelect = page.locator('select').nth(4);
-  await animationSelect.selectOption('walk');
+  // Select Walk animation - find the select after the Animation label
+  await page.locator('label:has-text("Animation:") + select').selectOption('walk');
 
   // Fill prompt and submit
   await page.getByPlaceholder('Enter a description of the 3D model...').fill('A walking knight');

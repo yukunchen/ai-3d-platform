@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test';
 
+// Helper: seed a fake auth token so the generation form is visible
+function seedAuthToken(page: import('@playwright/test').Page) {
+  return page.addInitScript(() => {
+    localStorage.setItem('auth_token', 'fake-test-token');
+  });
+}
+
 test('submit flow shows queued/running status after submit', async ({ page }) => {
   let statusCallCount = 0;
+
+  await seedAuthToken(page);
 
   await page.route('**/v1/jobs', async (route, request) => {
     if (request.method() !== 'POST') {
@@ -38,6 +47,8 @@ test('submit flow shows queued/running status after submit', async ({ page }) =>
 
 test('multiview submit sends front/left/right payload', async ({ page }) => {
   let capturedBody: Record<string, unknown> | null = null;
+
+  await seedAuthToken(page);
 
   await page.route('**/v1/jobs', async (route, request) => {
     if (request.method() !== 'POST') {

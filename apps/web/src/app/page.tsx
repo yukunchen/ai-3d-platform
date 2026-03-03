@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModelViewer from '../components/ModelViewer';
@@ -8,6 +8,61 @@ import TexturePanel from '../components/TexturePanel';
 import styles from './page.module.css';
 
 export default function Home() {
+  const [token, setToken] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('auth_token');
+    if (saved) setToken(saved);
+    else setAuthMode('login');
+  }, []);
+
+  const handleAuth = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const isRegister = authMode === 'register';
+      const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
+      const body = isRegister
+        ? { name: authName, email: authEmail, password: authPassword }
+        : { email: authEmail, password: authPassword };
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Authentication failed');
+      }
+
+      const data = await res.json();
+      localStorage.setItem('auth_token', data.token);
+      setToken(data.token);
+      setAuthMode(null);
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthName('');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setToken(null);
+    setAuthMode('login');
+  };
+
   const [jobType, setJobType] = useState<JobType>(JobType.Text);
   const [provider, setProvider] = useState<Provider | 'auto'>('auto');
   const [format, setFormat] = useState<AssetFormat>(AssetFormat.GLB);
@@ -85,9 +140,12 @@ export default function Home() {
         body.textureOptions = { resolution: textureResolution, style: textureStyle };
       }
 
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${API_URL}/v1/jobs`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(body),
       });
 
@@ -111,14 +169,18 @@ export default function Home() {
   const pollJobStatus = async (id: string) => {
     while (true) {
       try {
-        const res = await fetch(`${API_URL}/v1/jobs/${id}`);
+        const pollHeaders: Record<string, string> = {};
+        if (token) pollHeaders['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`${API_URL}/v1/jobs/${id}`, { headers: pollHeaders });
         const data: JobStatusResponse = await res.json();
 
         setStatus(data.status);
 
         if (data.status === JobStatus.Succeeded && data.assetId) {
           // Get asset URL
-          const assetRes = await fetch(`${API_URL}/v1/assets/${data.assetId}`);
+          const assetHeaders: Record<string, string> = {};
+          if (token) assetHeaders['Authorization'] = `Bearer ${token}`;
+          const assetRes = await fetch(`${API_URL}/v1/assets/${data.assetId}`, { headers: assetHeaders });
           const assetData = await assetRes.json();
 
           // /storage/* is proxied through Next.js rewrites — use as-is (relative).
@@ -133,7 +195,9 @@ export default function Home() {
 
           // Fetch texture maps if available
           try {
-            const texRes = await fetch(`${API_URL}/v1/assets/${data.assetId}/textures`);
+            const texHeaders: Record<string, string> = {};
+            if (token) texHeaders['Authorization'] = `Bearer ${token}`;
+            const texRes = await fetch(`${API_URL}/v1/assets/${data.assetId}/textures`, { headers: texHeaders });
             if (texRes.ok) {
               setTextureMaps(await texRes.json());
             }
@@ -163,7 +227,73 @@ export default function Home() {
     <main className={styles.main}>
       <h1>AI 3D Model Generator</h1>
 
-      <div className={styles.form}>
+      {authMode && (
+        <div className={styles.form} style={{ marginBottom: '2rem' }}>
+          <h2>{authMode === 'login' ? 'Login' : 'Register'}</h2>
+          {authMode === 'register' && (
+            <div className={styles.inputGroup}>
+              <label>Name:</label>
+              <input
+                type="text"
+                value={authName}
+                onChange={(e) => setAuthName(e.target.value)}
+                placeholder="Your name"
+                data-testid="auth-name"
+              />
+            </div>
+          )}
+          <div className={styles.inputGroup}>
+            <label>Email:</label>
+            <input
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              placeholder="you@example.com"
+              data-testid="auth-email"
+            />
+          </div>
+          <div className={styles.inputGroup}>
+            <label>Password:</label>
+            <input
+              type="password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              placeholder="Password"
+              data-testid="auth-password"
+            />
+          </div>
+          {authError && <div className={styles.error}>{authError}</div>}
+          <button
+            onClick={handleAuth}
+            disabled={authLoading}
+            className={styles.button}
+            data-testid="auth-submit"
+          >
+            {authLoading ? 'Please wait...' : authMode === 'login' ? 'Login' : 'Register'}
+          </button>
+          <button
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login');
+              setAuthError(null);
+            }}
+            className={styles.button}
+            style={{ background: '#666' }}
+            data-testid="auth-toggle"
+          >
+            {authMode === 'login' ? 'Need an account? Register' : 'Have an account? Login'}
+          </button>
+        </div>
+      )}
+
+      {token && (
+        <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
+          <button onClick={handleLogout} className={styles.button} style={{ background: '#c00', padding: '0.5rem 1rem' }} data-testid="logout-btn">
+            Logout
+          </button>
+        </div>
+      )}
+
+      {token && <div className={styles.form}>
         <div className={styles.inputGroup}>
           <label>Type:</label>
           <select
@@ -323,7 +453,7 @@ export default function Home() {
         >
           {loading ? 'Processing...' : 'Generate 3D Model'}
         </button>
-      </div>
+      </div>}
 
       {error && <div className={styles.error}>{error}</div>}
 

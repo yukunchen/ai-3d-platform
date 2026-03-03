@@ -93,3 +93,54 @@ test('multiview submit sends front/left/right payload', async ({ page }) => {
     },
   });
 });
+
+test('FBX format shows animation dropdown and submits animationOptions', async ({ page }) => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  await page.route('**/v1/jobs', async (route, request) => {
+    if (request.method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    capturedBody = request.postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ jobId: 'job-anim-1', status: 'queued' }),
+    });
+  });
+
+  await page.route('**/v1/jobs/job-anim-1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jobId: 'job-anim-1', status: 'running', assetId: null, error: null }),
+    });
+  });
+
+  await page.goto('/');
+
+  // Select FBX format
+  const formatSelect = page.locator('select').nth(2);
+  await formatSelect.selectOption('fbx');
+
+  // Verify animation dropdown is visible
+  const animationLabel = page.getByText('Animation:');
+  await expect(animationLabel).toBeVisible();
+
+  // Select Walk animation
+  const animationSelect = page.locator('select').nth(4);
+  await animationSelect.selectOption('walk');
+
+  // Fill prompt and submit
+  await page.getByPlaceholder('Enter a description of the 3D model...').fill('A walking knight');
+  await page.getByRole('button', { name: 'Generate 3D Model' }).click();
+
+  await expect(page.getByText('Generating your 3D model...')).toBeVisible();
+  expect(capturedBody).toMatchObject({
+    type: 'text',
+    prompt: 'A walking knight',
+    format: 'fbx',
+    animationOptions: { type: 'walk' },
+  });
+});

@@ -1,6 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { Job } from 'bullmq';
-import { JobData, TextureOptions, TextureStyle, AssetFormat } from '@ai-3d-platform/shared';
+import { JobData, TextureOptions, TextureStyle, AssetFormat, AnimationType } from '@ai-3d-platform/shared';
 import { uploadToS3 } from '@ai-3d-platform/shared';
 import { generatePlaceholderGLB } from '../glb-generator';
 import * as https from 'https';
@@ -23,6 +23,7 @@ interface TaskResult {
   assetId: string;
   assetUrl: string;
   textureMapIds?: Record<string, string>;
+  animationClipUrl?: string;
 }
 
 interface MeshyTaskResponse {
@@ -358,6 +359,10 @@ export async function generateFromText(
   // Upload to storage
   const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
+  const animationType = job.data.animationOptions?.type;
+  if (useFbx && animationType && animationType !== AnimationType.None) {
+    uploadResult.animationClipUrl = modelUrl;
+  }
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
 
@@ -416,6 +421,10 @@ export async function generateFromImage(
   // Upload to storage
   const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
+  const animationType = job.data.animationOptions?.type;
+  if (useFbx && animationType && animationType !== AnimationType.None) {
+    uploadResult.animationClipUrl = modelUrl;
+  }
 
   console.log(`[Meshy] Generated asset: ${uploadResult.assetId}`);
 
@@ -470,6 +479,10 @@ export async function generateFromMultiView(
   const buffer = await downloadFile(modelUrl);
   const uploadResult = await uploadAsset(buffer, extension, job.id!, s3Client, bucket);
   uploadResult.textureMapIds = extractTextureMapIds(result.texture_urls);
+  const animationType = job.data.animationOptions?.type;
+  if (useFbx && animationType && animationType !== AnimationType.None) {
+    uploadResult.animationClipUrl = modelUrl;
+  }
   console.log(`[Meshy] Generated multiview asset: ${uploadResult.assetId}`);
 
   return uploadResult;

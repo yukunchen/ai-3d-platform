@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset } from '@ai-3d-platform/shared';
+import { JobType, JobStatus, CreateJobRequest, JobStatusResponse, Provider, TextureStyle, AssetFormat, SkeletonPreset, AnimationType } from '@ai-3d-platform/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModelViewer from '../components/ModelViewer';
 import TexturePanel from '../components/TexturePanel';
@@ -67,6 +67,7 @@ export default function Home() {
   const [provider, setProvider] = useState<Provider | 'auto'>('auto');
   const [format, setFormat] = useState<AssetFormat>(AssetFormat.GLB);
   const [skeletonPreset, setSkeletonPreset] = useState<SkeletonPreset>(SkeletonPreset.None);
+  const [animationType, setAnimationType] = useState<AnimationType>(AnimationType.None);
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [frontImageUrl, setFrontImageUrl] = useState('');
@@ -135,6 +136,9 @@ export default function Home() {
       body.format = format;
       if (format === AssetFormat.FBX && skeletonPreset !== SkeletonPreset.None) {
         body.skeletonOptions = { preset: skeletonPreset };
+      }
+      if (format === AssetFormat.FBX && animationType !== AnimationType.None) {
+        body.animationOptions = { type: animationType };
       }
       if (enableTextures) {
         body.textureOptions = { resolution: textureResolution, style: textureStyle };
@@ -327,6 +331,7 @@ export default function Home() {
               setFormat(newFormat);
               if (newFormat !== AssetFormat.FBX) {
                 setSkeletonPreset(SkeletonPreset.None);
+                setAnimationType(AnimationType.None);
               }
             }}
           >
@@ -345,6 +350,22 @@ export default function Home() {
               <option value={SkeletonPreset.None}>None</option>
               <option value={SkeletonPreset.Humanoid}>Humanoid</option>
               <option value={SkeletonPreset.Quadruped}>Quadruped</option>
+            </select>
+          </div>
+        )}
+
+        {format === AssetFormat.FBX && (
+          <div className={styles.inputGroup}>
+            <label>Animation:</label>
+            <select
+              value={animationType}
+              onChange={(e) => setAnimationType(e.target.value as AnimationType)}
+            >
+              <option value="none">None</option>
+              <option value="idle">Idle</option>
+              <option value="walk">Walk</option>
+              <option value="run">Run</option>
+              <option value="custom">Custom</option>
             </select>
           </div>
         )}

@@ -13,6 +13,7 @@ export interface ProviderResult {
   textureMapIds?: Record<string, string>;
   format?: AssetFormat;
   costCents?: number;
+  animationClipUrl?: string;
 }
 
 export interface ProviderAdapter {

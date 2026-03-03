@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { createJobRouter, JobQueueLike } from './routes/jobs';
 import { createAssetsRouter, AssetsRouterDeps } from './routes/assets';
-import { createHistoryRouter } from './routes/history';
+import { createHistoryRouter, createBudgetRouter } from './routes/history';
 import { createAuthRouter, AuthStoreLike } from './routes/auth';
 import { createApiKeysRouter } from './routes/api-keys';
 import { createAuthMiddleware, noopMiddleware, AuthDeps } from './middleware/auth';
@@ -67,6 +67,7 @@ export function createApp(queue: JobQueueLike, options: CreateAppOptions = {}) {
   app.use('/v1/jobs', authenticate, createJobRouter(queue, { saveToHistory: options.saveToHistory }));
   if (options.includeHistory !== false) {
     app.use('/v1/jobs', createHistoryRouter());
+    app.use('/v1/budget', createBudgetRouter());
   }
   app.use('/v1/assets', authenticate, createAssetsRouter(options.assets));
 

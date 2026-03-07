@@ -174,6 +174,126 @@ const resp = await page.request.get(absoluteHref);
 
 ---
 
+## 2026-03-02 — 三个功能合并：animation / user-auth / history-models
+
+### 完成的事
+
+- **feature/animation (PR #5)**：FBX 输出支持动画类型（looping/static）
+- **feature/user-auth (PR #6)**：用户认证系统（JWT + API Keys）
+- **feature/history-models (PR #7)**：任务历史记录 + 成本追踪 + Budget API
+- 所有功能已合并到 master，最新提交 `5117e9f`
+
+### feature/animation 实现要点
+
+- `packages/shared/src/enums.ts` 新增 `AnimationType` 枚举（looping/static）
+- `CreateJobRequest` 增加 `animationType?: AnimationType`
+- Hunyuan provider 支持 `animation_type` 参数映射
+- Web UI 增加动画类型选择下拉框
+
+### feature/user-auth 实现要点
+
+- JWT 认证：注册/登录 API，返回 token
+- API Keys：用户可创建/管理 API Key，用于程序化调用
+- 中间件：`verifyToken()` 保护需要认证的 API
+- Web UI：注册页 + 登录页 + 用户仪表盘（显示 API Keys）
+- 测试：Playwright E2E 覆盖注册→登录→创建任务完整流程
+
+### feature/history-models 实现要点
+
+- `GET /v1/jobs` 历史任务列表 API（含分页、status 过滤）
+- `GET /v1/jobs/:id` 任务详情 API
+- 成本追踪：每次任务记录 `cost` 字段
+- Budget API：`GET /v1/budget` 查询用户配额，`POST /v1/budget` 充值
+- Web UI：历史任务列表页，显示任务状态、模型格式、费用
+
+### 部署状态
+
+- 生产服务器（100.22.97.122）已更新运行最新镜像
+- 所有测试全绿
+
+---
+
+## 2026-03-03 — Provider 配置 + 全功能测试
+
+### 完成的事
+
+- 配置 **Hunyuan (腾讯混元)** API credentials
+  - SecretId: `<redacted>`
+  - SecretKey: `<redacted>`
+- 配置 **Meshy** API credentials
+  - API Key: `<redacted>`
+- 测试通过全部功能：
+  - Text to 3D (Hunyuan ✅ / Meshy ✅)
+  - Image to 3D (Hunyuan ✅ / Meshy ✅)
+  - MultiView to 3D (Meshy ✅ / Hunyuan 需 PRO 模式)
+
+### Provider 功能支持矩阵
+
+| 功能 | Hunyuan | Meshy |
+|------|---------|-------|
+| Text to 3D | ✅ | ✅ |
+| Image to 3D | ✅ | ✅ |
+| MultiView to 3D | ❌ (需 PRO) | ✅ |
+| FBX 格式 | ✅ | ✅ |
+| 骨骼绑定 | ✅ | ❌ |
+| 动画类型 | ✅ | ❌ |
+
+### 测试用图片 URL
+
+```
+# Image to 3D
+https://www.w3schools.com/css/img_5terre.jpg
+
+# MultiView to 3D (三视图)
+https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=512   (正面)
+https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=512   (左侧)
+https://images.unsplash.com/photo-1606092195730-5d7b9af1efc5?w=512   (右侧)
+```
+
+---
+
+## 踩坑清单（每条包含根因 + 修复方法）
+
+### 12. 选择 Hunyuan 但调用 Meshy API
+
+**现象**：用户选择「腾讯混元」模型，但报错 `Meshy API error: 402 - Insufficient funds`
+
+**根因**：`apps/worker/src/core.ts` 的 `selectProvider()` 函数，当指定 provider 未配置时会**静默 fallback** 到其他 provider。用户选择了 Hunyuan，但生产环境未配置 Hunyuan credentials，导致 fallback 到 Meshy。
+
+**修复**：在生产服务器 `.env` 文件中添加 Hunyuan credentials：
+```
+TENCENTCLOUD_SECRET_ID=<redacted>
+TENCENTCLOUD_SECRET_KEY=<redacted>
+```
+
+**教训**：代码 fallback 行为会导致用户困惑，应该在 provider 未配置时抛出明确错误而非静默切换。
+
+---
+
+### 13. docker-compose env_file 不加载根目录 .env
+
+**现象**：worker 容器读取不到 `TENCENTCLOUD_SECRET_ID` 环境变量
+
+**根因**：`docker-compose.prod.yml` 使用 `env_file: .env`，但 `.env` 文件位于容器启动目录（`/home/ubuntu/WS/ai-3d-platform/`），容器内路径可能不一致。
+
+**修复**：确认 `.env` 在正确位置，通过 `docker compose config` 验证环境变量已注入。
+
+**教训**：生产环境配置需要通过 `docker compose config` 验证变量是否正确注入。
+
+---
+
+### 14. Meshy API Key 余额不足
+
+**现象**：`Meshy API error: 402 - {"message":"Insufficient funds"}`
+
+**根因**：旧的 Meshy API Key (`msy_iNWluczzEWBhHbAfpSpx6pIpgRntVj3advnC`) 余额用尽。
+
+**修复**：更换为新的 API Key (`msy_SjSinq8PpxjsjuKHR6YrBhZbYtDEIyuej80L`)。
+
+**教训**：定期检查 API 余额，避免生产环境任务失败。
+
+---
+
 ## 架构决策记录
 
 | 决策 | 原因 |
@@ -185,9 +305,61 @@ const resp = await page.request.get(absoluteHref);
 
 ---
 
-## 当前生产状态（2026-03-01）
+## 当前生产状态（2026-03-07）
 
 - **服务器**：100.22.97.122
-- **最新镜像 SHA**：`85bc6b7`（test: update meshy-texture tests）
-- **所有测试**：39 worker + 28 API + 2 E2E smoke = 全绿
-- **Playwright prod E2E**：2 passed，端到端验证生产可用
+- **最新镜像 SHA**：`5117e9f`
+- **所有测试**：全绿
+- **功能特性**：text-to-3D / image-to-3D / **multi-view-to-3D** / FBX格式 / 骨骼绑定 / 动画类型 / 用户认证 / 任务历史 / Budget管理
+- **已配置 Provider**：
+  - Hunyuan (腾讯混元)：SecretId/SecretKey 已配置
+  - Meshy：API Key 已配置
+- **已完成 PR**：#5 animation / #6 user-auth / #7 history-models / #4 skeleton-rig / #3 texture-maps / #2 cicd-pipeline
+
+---
+
+---
+
+## 2026-03-07 — Web UI E2E 测试验证
+
+### 完成的事
+
+- 执行全部 Playwright E2E 测试：**14/14 通过**
+- Smoke Tests (本地开发): 12/12 ✅
+- Production E2E Tests: 2/2 ✅
+- 详细报告：`tasks/e2e-test-results-2026-03-07.md`
+
+### 测试覆盖范围
+
+| 功能 | 状态 |
+|------|------|
+| 用户认证（注册/登录） | ✅ |
+| Text to 3D | ✅ |
+| Image to 3D | ✅ |
+| Multiview to 3D | ✅ |
+| FBX 格式 + 动画选择 | ✅ |
+| 任务历史列表 | ✅ (本地) |
+| 模型下载 | ✅ (生产) |
+
+### 发现的问题
+
+#### ✅ 已修复：生产构建过期 — `/history` 路由 404
+
+**现象**: 访问 `http://100.22.97.122:3000/history` 返回 404
+
+**原因**: 容器内 `.next/server/app/` 构建于 2026-03-01，不包含 history 路由（该功能 2026-03-02 合并）
+
+**修复**:
+1. 修复 TypeScript 编译错误：`export { AuthDeps }` → `export type { AuthDeps }`
+2. 本地构建新镜像 (commit `5117e9f`)
+3. 更新 `.env.images` 并重新部署
+4. 验证 `/history` 返回 200 ✅
+
+---
+
+## 待开发功能（未开始）
+
+- [ ] 用户个人中心：查看配额使用情况、充值记录
+- [ ] 模型管理：已生成模型的收藏、分享、删除
+- [ ] Webhook 回调：任务完成通知外部系统
+- [ ] 批量处理：一次提交多个模型生成任务

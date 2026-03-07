@@ -6,7 +6,15 @@ import { expect, test } from '@playwright/test';
 
 const PROD_URL = process.env.PROD_URL || 'http://100.22.97.122:3000';
 
+// Helper: seed a fake auth token so the generation form is visible
+function seedAuthToken(page: import('@playwright/test').Page) {
+  return page.addInitScript(() => {
+    localStorage.setItem('auth_token', 'fake-test-token');
+  });
+}
+
 test('page loads and form is rendered', async ({ page }) => {
+  await seedAuthToken(page);
   await page.goto(PROD_URL);
   await expect(page.getByRole('heading', { name: 'AI 3D Model Generator' })).toBeVisible();
   await expect(page.getByPlaceholder('Enter a description of the 3D model...')).toBeVisible();
@@ -16,6 +24,7 @@ test('page loads and form is rendered', async ({ page }) => {
 test('submit job and wait for success + model download link', async ({ page }) => {
   test.setTimeout(300_000); // 5 minutes — Meshy can get stuck at 99% for a while
 
+  await seedAuthToken(page);
   await page.goto(PROD_URL);
 
   // Select Meshy provider

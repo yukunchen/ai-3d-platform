@@ -25,6 +25,29 @@ export default function Home() {
   const handleAuth = async () => {
     setAuthLoading(true);
     setAuthError(null);
+
+    // Client-side validation
+    if (!authEmail.trim()) {
+      setAuthError('Email is required');
+      setAuthLoading(false);
+      return;
+    }
+    if (!authPassword.trim()) {
+      setAuthError('Password is required');
+      setAuthLoading(false);
+      return;
+    }
+    if (authMode === 'register' && authPassword.length < 8) {
+      setAuthError('Password must be at least 8 characters');
+      setAuthLoading(false);
+      return;
+    }
+    if (authMode === 'register' && !authName.trim()) {
+      setAuthError('Name is required');
+      setAuthLoading(false);
+      return;
+    }
+
     try {
       const isRegister = authMode === 'register';
       const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
@@ -40,7 +63,15 @@ export default function Home() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Authentication failed');
+        // Extract detailed validation error message if available
+        let errorMsg = data.error || 'Authentication failed';
+        if (data.details && Array.isArray(data.details) && data.details.length > 0) {
+          const firstError = data.details[0];
+          if (firstError.message) {
+            errorMsg = `${firstError.path?.join('.') || 'Field'}: ${firstError.message}`;
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
@@ -262,7 +293,7 @@ export default function Home() {
               type="password"
               value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
-              placeholder="Password"
+              placeholder={authMode === 'register' ? 'At least 8 characters' : 'Password'}
               data-testid="auth-password"
             />
           </div>

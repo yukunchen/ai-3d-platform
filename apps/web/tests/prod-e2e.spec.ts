@@ -6,27 +6,39 @@ import { expect, test } from '@playwright/test';
 
 const PROD_URL = process.env.PROD_URL || 'http://100.22.97.122:3000';
 
-// Helper: seed a fake auth token so the generation form is visible
-function seedAuthToken(page: import('@playwright/test').Page) {
-  return page.addInitScript(() => {
-    localStorage.setItem('auth_token', 'fake-test-token');
-  });
-}
+// Generate unique email for each test run
+const TEST_EMAIL = `test${Date.now()}@example.com`;
+const TEST_PASSWORD = 'testpassword123';
+const TEST_NAME = 'Test User';
 
-test('page loads and form is rendered', async ({ page }) => {
-  await seedAuthToken(page);
+test('page loads and auth form is rendered', async ({ page }) => {
   await page.goto(PROD_URL);
   await expect(page.getByRole('heading', { name: 'AI 3D Model Generator' })).toBeVisible();
-  await expect(page.getByPlaceholder('Enter a description of the 3D model...')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Generate 3D Model' })).toBeDisabled();
+  await expect(page.getByTestId('auth-email')).toBeVisible();
+  await expect(page.getByTestId('auth-password')).toBeVisible();
 });
 
-test('submit job and wait for success + model download link', async ({ page }) => {
-  test.setTimeout(300_000); // 5 minutes — Meshy can get stuck at 99% for a while
+test('register, login, and submit job successfully', async ({ page }) => {
+  test.setTimeout(400_000); // Allow extra time for registration and job processing
 
-  await seedAuthToken(page);
+  // === Step 1: Register ===
   await page.goto(PROD_URL);
+  await expect(page.getByTestId('auth-email')).toBeVisible();
 
+  // Switch to register mode
+  await page.getByTestId('auth-toggle').click();
+  await expect(page.getByTestId('auth-name')).toBeVisible();
+
+  // Fill register form
+  await page.getByTestId('auth-name').fill(TEST_NAME);
+  await page.getByTestId('auth-email').fill(TEST_EMAIL);
+  await page.getByTestId('auth-password').fill(TEST_PASSWORD);
+  await page.getByTestId('auth-submit').click();
+
+  // After registration, generation form should appear
+  await expect(page.getByRole('button', { name: 'Generate 3D Model' })).toBeVisible({ timeout: 10_000 });
+
+  // === Step 2: Submit a job ===
   // Select Meshy provider
   await page.locator('select').nth(1).selectOption('meshy');
 
@@ -61,4 +73,18 @@ test('submit job and wait for success + model download link', async ({ page }) =
   const ct = resp.headers()['content-type'];
   console.log('Content-Type:', ct);
   expect(ct).toMatch(/gltf|octet/);
+
+  // === Step 3: Test logout and login ===
+  await page.getByTestId('logout-btn').click();
+
+  // Should show auth form again
+  await expect(page.getByTestId('auth-email')).toBeVisible();
+
+  // Login with the same credentials
+  await page.getByTestId('auth-email').fill(TEST_EMAIL);
+  await page.getByTestId('auth-password').fill(TEST_PASSWORD);
+  await page.getByTestId('auth-submit').click();
+
+  // Should show generation form again
+  await expect(page.getByRole('button', { name: 'Generate 3D Model' })).toBeVisible({ timeout: 10_000 });
 });

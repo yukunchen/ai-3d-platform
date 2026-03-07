@@ -150,4 +150,4 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
 }
 
 // Re-export helpers for use by api-keys router and app.ts
-export { AuthDeps };
+export type { AuthDeps };

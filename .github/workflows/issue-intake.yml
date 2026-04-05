@@ -16,9 +16,10 @@ jobs:
     steps:
       - name: Determine issue type
         id: type
+        env:
+          LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
         run: |
-          LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
-          if echo "$LABELS" | grep -q '"feature"'; then
+          if echo "$LABELS" | jq -e 'contains(["feature"])' > /dev/null 2>&1; then
             echo "type=feature" >> $GITHUB_OUTPUT
             echo "workflow_label=workflow:s1-prd" >> $GITHUB_OUTPUT
           else
@@ -28,11 +29,11 @@ jobs:
 
       - name: Generate AI draft
         id: draft
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TYPE: ${{ steps.type.outputs.type }}
         run: |
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_BODY="${{ github.event.issue.body }}"
-          ISSUE_TYPE="${{ steps.type.outputs.type }}"
-
           if [ "$ISSUE_TYPE" = "feature" ]; then
             PROMPT="You are a product analyst. Based on the following GitHub Issue, generate a concise PRD draft in Chinese. Include: 一句话描述, 用户流程 (3-5 steps), MVP范围 (bullet list), 验收标准 (bullet list), 明确不做 (at least 2 items). Keep it under 400 words.\n\nIssue Title: $ISSUE_TITLE\n\nIssue Body:\n$ISSUE_BODY"
           else

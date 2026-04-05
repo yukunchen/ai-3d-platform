@@ -1,0 +1,87 @@
+name: Issue Intake
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.issue.labels.*.name, 'feature') ||
+      contains(github.event.issue.labels.*.name, 'bug-fix')
+    permissions:
+      issues: write
+
+    steps:
+      - name: Determine issue type
+        id: type
+        run: |
+          LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
+          if echo "$LABELS" | grep -q '"feature"'; then
+            echo "type=feature" >> $GITHUB_OUTPUT
+            echo "workflow_label=workflow:s1-prd" >> $GITHUB_OUTPUT
+          else
+            echo "type=bug-fix" >> $GITHUB_OUTPUT
+            echo "workflow_label=workflow:s3-fix" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate AI draft
+        id: draft
+        run: |
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          ISSUE_TYPE="${{ steps.type.outputs.type }}"
+
+          if [ "$ISSUE_TYPE" = "feature" ]; then
+            PROMPT="You are a product analyst. Based on the following GitHub Issue, generate a concise PRD draft in Chinese. Include: 一句话描述, 用户流程 (3-5 steps), MVP范围 (bullet list), 验收标准 (bullet list), 明确不做 (at least 2 items). Keep it under 400 words.\n\nIssue Title: $ISSUE_TITLE\n\nIssue Body:\n$ISSUE_BODY"
+          else
+            PROMPT="You are a senior engineer doing bug triage. Based on the following GitHub Issue, generate a bug analysis draft in Chinese. Include: 问题描述, 可能根因 (2-3 candidates), 复现步骤, 修复建议, 回归测试要点. Keep it under 300 words.\n\nIssue Title: $ISSUE_TITLE\n\nIssue Body:\n$ISSUE_BODY"
+          fi
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n --arg prompt "$PROMPT" '{
+              model: "claude-opus-4-6",
+              max_tokens: 1024,
+              messages: [{"role": "user", "content": $prompt}]
+            }')")
+
+          DRAFT=$(echo "$RESPONSE" | jq -r '.content[0].text // "AI draft unavailable: " + .error.message')
+          echo "draft<<EOF" >> $GITHUB_OUTPUT
+          echo "$DRAFT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post draft comment
+        uses: actions/github-script@v7
+        env:
+          DRAFT: ${{ steps.draft.outputs.draft }}
+          ISSUE_TYPE: ${{ steps.type.outputs.type }}
+        with:
+          script: |
+            const type = process.env.ISSUE_TYPE;
+            const draft = process.env.DRAFT;
+            const icon = type === 'feature' ? '📋' : '🐛';
+            const label = type === 'feature' ? 'PRD 草稿' : 'Bug 分析草稿';
+            const body = `## ${icon} AI ${label}\n\n${draft}\n\n---\n> 🤖 由 AI 自动生成。请在主 Orchestrator session 中确认后继续。\n> 运行 \`/orchestrator\` 并输入 \`resume\` 来恢复此 Issue 的工作流。`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Add workflow label
+        uses: actions/github-script@v7
+        env:
+          WORKFLOW_LABEL: ${{ steps.type.outputs.workflow_label }}
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: [process.env.WORKFLOW_LABEL]
+            });

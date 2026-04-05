@@ -34,19 +34,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha,prefix=sha-
-
       - name: Build & push api
         uses: docker/build-push-action@v5
         with:
@@ -77,17 +64,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy to app-server
+  deploy-staging:
+    name: Deploy to Staging
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: Deploy staging via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.APP_SERVER_HOST }}
@@ -95,27 +82,56 @@ jobs:
           key: ${{ secrets.APP_SERVER_SSH_KEY }}
           script: |
             cd ${{ secrets.APP_DEPLOY_PATH }}
-
-            # Sync latest compose files from repo
             git pull origin master
 
-            # Persist image tags so docker compose can resolve vars after deploy
-            cat > .env.images <<'IMGEOF'
+            cat > .env.images << 'IMGEOF'
             API_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
             WORKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
             WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
             IMGEOF
 
-            # Login to GHCR and pull pre-built images
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -p ai-3d-staging -f docker-compose.staging.yml --env-file .env.images pull
+            docker compose -p ai-3d-staging -f docker-compose.staging.yml --env-file .env.images up -d --remove-orphans --force-recreate
+
+            sleep 15
+            curl -f http://localhost:4001/health || (docker compose -p ai-3d-staging -f docker-compose.staging.yml logs api && exit 1)
+            curl -f http://localhost:4000 > /dev/null || (docker compose -p ai-3d-staging -f docker-compose.staging.yml logs web && exit 1)
+
+            echo "Staging deploy OK: ${{ github.sha }}"
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy production via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_SERVER_HOST }}
+          username: ${{ secrets.APP_SERVER_USER }}
+          key: ${{ secrets.APP_SERVER_SSH_KEY }}
+          script: |
+            cd ${{ secrets.APP_DEPLOY_PATH }}
+            git pull origin master
+
+            cat > .env.images << 'IMGEOF'
+            API_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+            WORKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
+            WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+            IMGEOF
+
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose -f docker-compose.prod.yml --env-file .env.images pull
-
-            # Rolling restart (force recreate to pick up new images)
             docker compose -f docker-compose.prod.yml --env-file .env.images up -d --remove-orphans --force-recreate
 
-            # Health check
             sleep 15
-            curl -f http://localhost:3001/health || (docker compose -f docker-compose.prod.yml --env-file .env.images logs api && exit 1)
-            curl -f http://localhost:3000 > /dev/null || (docker compose -f docker-compose.prod.yml --env-file .env.images logs web && exit 1)
+            curl -f http://localhost:4011/health || (docker compose -f docker-compose.prod.yml --env-file .env.images logs api && exit 1)
+            curl -f http://localhost:4010 > /dev/null || (docker compose -f docker-compose.prod.yml --env-file .env.images logs web && exit 1)
 
-            echo "Deploy OK: ${{ github.sha }}"
+            echo "Production deploy OK: ${{ github.sha }}"

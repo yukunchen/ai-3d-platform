@@ -360,8 +360,43 @@ s5-deploy          ← superpowers:finishing-a-development-branch 收尾
 
 ---
 
-## 10. 待确认事项
+## 10. 环境配置清单（已确认）
 
-- staging server 是否已存在，还是需要新建？
-- staging URL 是什么（用于 verify-subagent 跑 E2E）？
-- GitHub repo 的 `ANTHROPIC_API_KEY` secret 是否已配置（issue-intake.yml 需要）？
+### 端口规划（同一台 VPS: 184.32.94.23）
+
+| 环境 | Web 端口 | API 端口 | 部署路径 |
+|------|---------|---------|---------|
+| dev | 4100 | 4101 | 本地开发 |
+| staging | 4000 | 4001 | `/home/ubuntu/WS/ai-3d-platform-staging` |
+| production | 4010 | 4011 | `/home/ubuntu/WS/ai-3d-platform`（现有）|
+
+### GitHub Secrets 配置状态
+
+| Secret | 位置 | 状态 |
+|--------|------|------|
+| `ANTHROPIC_API_KEY` | repo 级别 | 已配置 |
+| `APP_SERVER_HOST` | repo 级别（production）| 已配置 |
+| `APP_SERVER_USER` | repo 级别（production）| 已配置 |
+| `APP_SERVER_SSH_KEY` | repo 级别（production）| 已配置 |
+| `APP_DEPLOY_PATH` | repo 级别（production）| 已配置 |
+| `APP_SERVER_HOST` | staging environment | 已配置 |
+| `APP_SERVER_USER` | staging environment | 已配置 |
+| `APP_SERVER_SSH_KEY` | staging environment | 已配置 |
+| `APP_DEPLOY_PATH` | staging environment | 已配置 |
+| `GITHUB_TOKEN` | 自动提供 | 无需配置 |
+
+### GitHub Environments
+
+| Environment | Required Reviewers | 状态 |
+|-------------|-------------------|------|
+| `staging` | 无（自动部署）| 已创建 |
+| `production` | yukunchen | 已配置 |
+
+### 待创建 Issue Labels
+
+```
+feature, bug-fix
+workflow:s1-prd, workflow:s2-design
+workflow:s3-impl, workflow:s3-fix
+workflow:s4-verify, workflow:s5-deploy, workflow:done
+```

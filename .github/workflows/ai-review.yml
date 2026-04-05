@@ -10,6 +10,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,41 +21,119 @@ jobs:
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
 
-      - name: Run AI code review
-        id: ai_review
+      - name: Detect if feature PR (has workflow label on linked issue)
+        id: detect
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            const body = pr.data.body || '';
+            const issueMatch = body.match(/#(\d+)/);
+            if (!issueMatch) return 'false';
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issueMatch[1])
+            });
+            const labels = issue.data.labels.map(l => l.name);
+            const isFeature = labels.some(l => l === 'feature');
+            if (isFeature) {
+              core.exportVariable('ISSUE_NUMBER', issueMatch[1]);
+            }
+            return isFeature ? 'true' : 'false';
+
+      - name: Get linked issue PRD draft (feature PRs only)
+        id: issue_body
+        if: steps.detect.outputs.result == 'true'
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(process.env.ISSUE_NUMBER)
+            });
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(process.env.ISSUE_NUMBER)
+            });
+            const prdComment = comments.data.find(c =>
+              c.body.includes('AI PRD 草稿') || c.body.includes('PRD 草稿')
+            );
+            return prdComment
+              ? prdComment.body.substring(0, 2000)
+              : issue.data.body.substring(0, 2000);
+
+      - name: Layer 1 — General code review
+        id: layer1
         run: |
           DIFF=$(cat /tmp/pr.diff | head -c 12000)
-
           RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
             -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
             -H "anthropic-version: 2023-06-01" \
             -H "content-type: application/json" \
-            -d "$(jq -n \
-              --arg diff "$DIFF" \
-              '{
-                model: "claude-opus-4-6",
-                max_tokens: 1024,
-                messages: [{
-                  role: "user",
-                  content: ("Please review this pull request diff. Focus on:\n1. Code quality and correctness\n2. API contract violations (see docs/03_api_contract.md)\n3. Security issues (auth, input validation, secrets exposure)\n4. Provider isolation violations (apps/worker/src/providers/)\n5. Breaking changes to shared types (packages/shared/)\nBe concise and actionable.\n\nDiff:\n" + $diff)
-                }]
-              }')")
-
-          REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "AI review unavailable: " + .error.message')
-          echo "review_text<<EOF" >> $GITHUB_OUTPUT
-          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+            -d "$(jq -n --arg diff "$DIFF" '{
+              model: "claude-opus-4-6",
+              max_tokens: 1024,
+              messages: [{
+                role: "user",
+                content: ("Review this PR diff. Focus on:\n1. Code quality and correctness\n2. API contract violations (see docs/03_api_contract.md)\n3. Security issues (auth, input validation, secrets exposure)\n4. Provider isolation violations (apps/worker/src/providers/)\n5. Breaking changes to shared types (packages/shared/)\nBe concise and actionable.\n\nDiff:\n" + $diff)
+              }]
+            }')")
+          TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "Layer 1 review unavailable"')
+          echo "text<<EOF" >> $GITHUB_OUTPUT
+          echo "$TEXT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Post review comment
+      - name: Layer 2 — Design intent review (feature PRs only)
+        id: layer2
+        if: steps.detect.outputs.result == 'true'
+        env:
+          PRD_CONTENT: ${{ steps.issue_body.outputs.result }}
+        run: |
+          DIFF=$(cat /tmp/pr.diff | head -c 10000)
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n --arg diff "$DIFF" --arg prd "$PRD_CONTENT" '{
+              model: "claude-opus-4-6",
+              max_tokens: 1024,
+              messages: [{
+                role: "user",
+                content: ("You are reviewing whether a PR implementation matches its design intent.\n\nPRD/Issue Requirements:\n" + $prd + "\n\nPR Diff:\n" + $diff + "\n\nCheck:\n1. Does the implementation cover all requirements in the PRD?\n2. Are there features implemented that were explicitly out-of-scope?\n3. Do acceptance criteria appear to be met?\n4. Any significant gaps between design and implementation?\n\nBe concise. List gaps as bullet points.")
+              }]
+            }')")
+          TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "Layer 2 review unavailable"')
+          echo "text<<EOF" >> $GITHUB_OUTPUT
+          echo "$TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post review comments
         uses: actions/github-script@v7
         env:
-          REVIEW_TEXT: ${{ steps.ai_review.outputs.review_text }}
+          LAYER1: ${{ steps.layer1.outputs.text }}
+          LAYER2: ${{ steps.layer2.outputs.text }}
+          IS_FEATURE: ${{ steps.detect.outputs.result }}
         with:
           script: |
-            const reviewText = process.env.REVIEW_TEXT;
+            const layer1 = process.env.LAYER1;
+            const layer2 = process.env.LAYER2;
+            const isFeature = process.env.IS_FEATURE === 'true';
+            let body = `## 🤖 AI Code Review\n\n### Layer 1 — Code Quality\n\n${layer1}`;
+            if (isFeature && layer2) {
+              body += `\n\n### Layer 2 — Design Intent\n\n${layer2}`;
+            }
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## AI Code Review\n\n${reviewText}`
+              body
             });

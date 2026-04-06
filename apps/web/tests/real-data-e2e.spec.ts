@@ -18,7 +18,6 @@ const PROD_URL = process.env.PROD_URL || 'http://localhost:3000';
 const REAL_USER_DATA = {
   type: 'text',
   provider: 'meshy',
-  format: 'glb',
   enableTextures: true,
   textureResolution: '1024',
   textureStyle: 'photorealistic',
@@ -129,13 +128,12 @@ test('Real data: Text to 3D with Meshy provider and textures (Issue #8)', async 
 // ============================================================================
 // Test 2: Smoke test — verify job submission pipeline is active
 // ============================================================================
-test('Real data: Job submission pipeline is active (smoke)', async ({ page }) => {
+test('Real data: Job submission pipeline is active (smoke)', { timeout: 60_000 }, async ({ page }) => {
   console.log(`\n🧪 Test: Job submission smoke check`);
   console.log(`📍 URL: ${PROD_URL}`);
 
   // Quick smoke: verify the end-to-end submission path works end-to-end
   // If this fails, it means the form or API is broken — not just slow generation
-  test.setTimeout(60_000);
 
   // Register and login
   await registerUser(page);

@@ -4,7 +4,7 @@ const PORT = 3100;
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: '**/prod-e2e.spec.ts',
+  testIgnore: ['**/prod-e2e.spec.ts', '**/real-data-e2e.spec.ts', '**/generation-e2e.spec.ts', '**/full-e2e.spec.ts'],
   timeout: 30_000,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,

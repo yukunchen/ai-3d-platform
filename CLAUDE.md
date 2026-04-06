@@ -65,9 +65,15 @@ This project uses parallel worktree sessions. Each session has a fixed role:
 
 ### Rules for Feature Branch Sessions (STRICT)
 - **NEVER merge your own PR into master** — the master session owns all merges
-- Your job ends at: implement → commit → push → `gh pr create` → update `tasks/todo.md` → wait
+- **Pre-PR Verification (MANDATORY)**: Before creating a PR, you MUST:
+  1. Run `pnpm test` — all unit/integration tests must pass
+  2. Run `npx playwright test tests/auth.spec.ts` — web smoke tests must pass
+  3. Merge latest `origin/master` into your branch and resolve any conflicts
+  4. Verify no secrets, credentials, or sensitive infrastructure details in committed files
+  5. Only after ALL checks pass locally, run `gh pr create`
+- Your job ends at: implement → local tests pass → merge master → push → `gh pr create` → wait
 - Do NOT run `gh pr merge`, `git merge master`, or `gh api .../merge` under any circumstances
-- If you see a merge conflict, report it in the PR description and stop — the master session resolves it
+- If you see a merge conflict, resolve it in the feature branch before creating the PR
 - Do NOT rebase onto master yourself — the master session handles rebasing before merge
 
 ### Rules for Master Session

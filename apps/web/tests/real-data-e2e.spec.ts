@@ -127,14 +127,14 @@ test('Real data: Text to 3D with Meshy provider and textures (Issue #8)', async 
 });
 
 // ============================================================================
-// Test 2: Verify meaningful error message on invalid prompt
+// Test 2: Smoke test — verify job submission pipeline is active
 // ============================================================================
-test('Real data: Generation failure produces meaningful error message', async ({ page }) => {
-  console.log(`\n🧪 Test: Failure-path error message verification`);
+test('Real data: Job submission pipeline is active (smoke)', async ({ page }) => {
+  console.log(`\n🧪 Test: Job submission smoke check`);
   console.log(`📍 URL: ${PROD_URL}`);
 
-  // Use extremely short timeout to check that timeouts produce useful messages
-  // This test verifies the UI behaves gracefully if a job fails or times out
+  // Quick smoke: verify the end-to-end submission path works end-to-end
+  // If this fails, it means the form or API is broken — not just slow generation
   test.setTimeout(60_000);
 
   // Register and login

@@ -18,12 +18,14 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '4001:3001'
     environment:
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
     env_file:
       - .env.local
+    volumes:
+      - storage:/app/apps/api/storage
     depends_on:
       redis:
         condition: service_healthy
@@ -38,6 +40,8 @@ services:
       - NODE_ENV=production
     env_file:
       - .env.local
+    volumes:
+      - storage:/api/storage
     depends_on:
       redis:
         condition: service_healthy
@@ -48,11 +52,16 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '4000:3000'
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://api:3001
+      - PORT=3000
+      - API_URL=http://api:3001
+      - NEXT_PUBLIC_API_URL=http://localhost:4001
     env_file:
       - .env.local
     depends_on:
       - api
+
+volumes:
+  storage:
